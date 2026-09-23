@@ -4,7 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Stickies - Desktop Notes</title>
-<meta name="description" content="A private, offline-first desktop sticky notes app. Your notes never leave your device unless you choose to sync them to your own Google Drive.">
+<meta name="description" content="A simple, private and offline-first sticky notes app. Your notes stay on your device unless you choose to sync them to your own Google Drive.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Stickies">
+<meta property="og:description" content="A simple, private and offline-first sticky notes app.">
+<meta property="og:url" content="https://bkar81.github.io/stickies/">
+<meta property="og:image" content="https://bkar81.github.io/stickies/pwa-512x512.png">
+<meta property="og:image:alt" content="Stickies app icon">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Stickies">
+<meta name="twitter:description" content="A simple, private and offline-first sticky notes app.">
+<meta name="twitter:image" content="https://bkar81.github.io/stickies/pwa-512x512.png">
 <meta name="theme-color" content="#FACC15">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="favicon.png" type="image/png">
@@ -635,7 +645,7 @@ input,select,textarea{font-family:inherit;}
       <button data-close="modal-settings">✕</button>
     </div>
     <div class="modal-body" id="settings-body"></div>
-    <div class="modal-footer" style="justify-content:space-between;">
+    <div class="modal-footer">
       <button class="btn danger" id="btn-reset-app">Reset App Data</button>
       <button class="btn primary" data-close="modal-settings">Done</button>
     </div>
@@ -2993,7 +3003,7 @@ function renderSettingsModal(){
       <div class="stg-card${s.dragBehavior==='overlap'?' selected':''}" data-v="overlap"><b>Stay Overlapped (Keep Position)</b><small>Notes stay exactly where you drop them, overlapping naturally</small></div>
       <div class="stg-card${s.dragBehavior==='auto-adjust'?' selected':''}" data-v="auto-adjust"><b>Auto-Adjust to Nearest Empty Spot</b><small>Automatically resolves collision so notes don't overlap</small></div>
     </div>
-    <div class="hint" style="margin-top:6px;font-size:12.5px;color:#475569;line-height:1.5;">Resizing/expanding a sticky is always allowed to overlap others — this only affects dragging.</div>
+    <div class="hint" style="margin-top:6px;">Resizing/expanding a note is always allowed to overlap others — this only affects dragging.</div>
 
     <div class="stg-label">🗑️ Ask before deleting</div>
     <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:#334155; cursor:pointer;">
@@ -3088,86 +3098,9 @@ function renderSettingsModal(){
 }
 document.getElementById('btn-settings').addEventListener('click', ()=>{ renderSettingsModal(); openModal('modal-settings'); });
 document.getElementById('btn-reset-app').addEventListener('click', ()=>{
-  confirmDialog('Reset all app data?', 'This restores Stickies to its clean default state, including the three sample stickies, default groups and default settings. Your existing local data will be replaced. Consider exporting a backup first.', ()=>{
-    const resetNotes = sampleNotes();
-    const resetGroups = sampleGroups();
-    const resetSettings = {...DEFAULT_SETTINGS};
-    const resetSync = {status:'idle', lastSyncedAt:null, fileId:null};
-
-    const oldStorage = {
-      notes: localStorage.getItem(LS_NOTES),
-      groups: localStorage.getItem(LS_GROUPS),
-      settings: localStorage.getItem(LS_SETTINGS),
-      sync: localStorage.getItem(LS_SYNC),
-      sidebar: localStorage.getItem(LS_SIDEBAR),
-      managerGroups: localStorage.getItem(LS_MANAGER_GROUPS)
-    };
-    try{
-      // Reset the in-memory state AND persistence together. This avoids relying
-      // on a page reload/service-worker cache to recreate the initial state.
-      // It also means Reset cannot leave the currently displayed app blank.
-      localStorage.setItem(LS_NOTES, JSON.stringify(resetNotes));
-      localStorage.setItem(LS_GROUPS, JSON.stringify(resetGroups));
-      localStorage.setItem(LS_SETTINGS, JSON.stringify(resetSettings));
-      localStorage.setItem(LS_SYNC, JSON.stringify(resetSync));
-
-      // Verify every persistent value before changing the live application state.
-      const savedNotes = JSON.parse(localStorage.getItem(LS_NOTES) || 'null');
-      const savedGroups = JSON.parse(localStorage.getItem(LS_GROUPS) || 'null');
-      const savedSettings = JSON.parse(localStorage.getItem(LS_SETTINGS) || 'null');
-      const savedSync = JSON.parse(localStorage.getItem(LS_SYNC) || 'null');
-      if(!Array.isArray(savedNotes) || savedNotes.length !== 3 ||
-         !Array.isArray(savedGroups) || savedGroups.length !== 3 ||
-         !savedSettings || typeof savedSettings !== 'object' ||
-         !savedSync || typeof savedSync !== 'object'){
-        throw new Error('Reset data verification failed');
-      }
-
-      S.notes = resetNotes;
-      S.groups = resetGroups;
-      S.settings = resetSettings;
-      S.sync = resetSync;
-      S.viewMode = 'desktop';
-      S.searchQuery = '';
-      S.groupFilter = 'ALL';
-      S.zTop = 0;
-      S.zTopPinned = 0;
-
-      // Reset the two collapsible Groups panels to their normal expanded state.
-      try{ localStorage.removeItem(LS_SIDEBAR); }catch(e){}
-      try{ localStorage.removeItem(LS_MANAGER_GROUPS); }catch(e){}
-      setSidebarCollapsed(false);
-      setManagerGroupsCollapsed(false);
-
-      // Close any open settings/modal state and redraw from the reset state.
-      closeAllToolbarMenus();
-      document.querySelectorAll('.modal.show').forEach(m=>m.classList.remove('show'));
-      renderBoth();
-      updateTrashBadge();
-      document.getElementById('btn-snap').classList.toggle('active', S.settings.snapToGrid);
-      setSyncUI('idle','Not connected');
-      refreshInfoTooltip();
-      toast('Stickies reset to default data');
-    }catch(e){
-      // If storage or verification fails, put the previous values back so a
-      // partial reset can never destroy only some of the user's data.
-      try{
-        const restore = (key, value)=>{
-          if(value === null) localStorage.removeItem(key);
-          else localStorage.setItem(key, value);
-        };
-        restore(LS_NOTES, oldStorage.notes);
-        restore(LS_GROUPS, oldStorage.groups);
-        restore(LS_SETTINGS, oldStorage.settings);
-        restore(LS_SYNC, oldStorage.sync);
-        restore(LS_SIDEBAR, oldStorage.sidebar);
-        restore(LS_MANAGER_GROUPS, oldStorage.managerGroups);
-      }catch(rollbackError){
-        console.error('Reset rollback also failed:', rollbackError);
-      }
-      console.error('Unable to complete Reset App Data:', e);
-      toast('Reset failed — your existing data was kept');
-    }
+  confirmDialog('Reset all app data?', 'This deletes every note, group and setting stored in this browser. This cannot be undone. Consider exporting a backup first.', ()=>{
+    localStorage.removeItem(LS_NOTES); localStorage.removeItem(LS_GROUPS); localStorage.removeItem(LS_SETTINGS); localStorage.removeItem(LS_SYNC);
+    location.reload();
   });
 });
 
@@ -3189,7 +3122,8 @@ function renderAboutModal(){
       <div class="about-card"><span class="emoji">✍️</span><b>Rich text</b><small>Bold, italic, underline, strikethrough, bullets and numbering with visual Markdown-style list behavior.</small></div>
       <div class="about-card"><span class="emoji">☑️</span><b>Checklists</b><small>Type <code>[]</code> or <code>[x]</code> at the start of a line for a clickable checklist box.</small></div>
       <div class="about-card"><span class="emoji">🔍</span><b>Search & highlight</b><small>Search across titles, content, tags, and groups.</small></div>
-      <div class="about-card"><span class="emoji">📁</span><b>Groups sidebar</b><small>The Groups sidebar can be toggled with ⮜ to hide it and ⮞ to show it again, giving more space for your stickies.</small></div>
+      <div class="about-card"><span class="emoji">📁</span><b>Groups sidebar</b><small>The Groups panel on the Home page and in Sticky Manager is toggleable using ⮜ to hide it and ⮞ to show it again.</small></div>
+      <div class="about-card"><span class="emoji">☰</span><b>Toggleable toolbar</b><small>The top toolbar keeps the frequently used New Sticky action visible; less-frequent actions are available under the ⋮ More menu. Less-frequent toolbar actions are available under the ⋮ More menu.</div>
       <div class="about-card"><span class="emoji">🧹</span><b>Auto-organize</b><small>Tile, cascade, compact, or cluster notes.</small></div>
       <div class="about-card"><span class="emoji">🗒️</span><b>Sticky Manager</b><small>Manage, move, delete, export, import, and edit stickies in bulk.</small></div>
       <div class="about-card"><span class="emoji">🗑️</span><b>Trash</b><small>Deleted stickies remain recoverable until permanently removed.</small></div>
@@ -3242,7 +3176,10 @@ function renderAboutModal(){
       };
       try{
         if(navigator.share) await navigator.share(shareData);
-        else if(navigator.clipboard && window.isSecureContext){ await navigator.clipboard.writeText(shareData.url); toast('Stickies app link copied.'); }
+        else if(navigator.clipboard && window.isSecureContext){
+          await navigator.clipboard.writeText(shareData.url);
+          toast('Stickies app link copied.');
+        }
         else window.prompt('Copy the Stickies app link:', shareData.url);
       }catch(err){ if(!err || err.name!=='AbortError') console.error('Unable to share Stickies:', err); }
     });
@@ -3885,24 +3822,65 @@ updateOfflineIndicator();
       if(checkLabel) checkLabel.textContent='Checking…';
     }
     setCheckStatus('');
-    try{
-      await registration.update();
-      if(registration.waiting){
-        showUpdateNotice(registration.waiting);
-        setCheckStatus('A new version is ready to install.');
-      }else if(manual){
-        setCheckStatus("You're using the latest version of Stickies.");
-      }
-    }catch(error){
-      console.warn('Stickies update check failed:',error);
-      if(manual) setCheckStatus('Could not check for updates. Please try again.');
-    }finally{
+
+    let settled=false;
+    const finish=(message)=>{
+      if(settled) return;
+      settled=true;
+      if(message) setCheckStatus(message);
       const btn=getCheckBtn();
       if(btn){
         btn.classList.remove('is-checking');
         const label=getCheckLabel();
         if(label) label.textContent='Check for updates';
       }
+    };
+
+    const timer=setTimeout(()=>finish(manual ? 'Could not check for updates. Please try again.' : ''),10000);
+    const onMessage=(event)=>{
+      const data=event.data||{};
+      if(data.type==='APP_UPDATE_FOUND'){
+        clearTimeout(timer);
+        navigator.serviceWorker.removeEventListener('message',onMessage);
+        showUpdateNotice();
+        finish('A new version of Stickies is ready to install.');
+      }else if(data.type==='APP_UPDATE_CURRENT'){
+        clearTimeout(timer);
+        navigator.serviceWorker.removeEventListener('message',onMessage);
+        finish(manual ? "You're using the latest version of Stickies." : '');
+      }else if(data.type==='APP_UPDATE_ERROR'){
+        clearTimeout(timer);
+        navigator.serviceWorker.removeEventListener('message',onMessage);
+        finish(manual ? 'Could not check for updates. Please try again.' : '');
+      }
+    };
+    navigator.serviceWorker.addEventListener('message',onMessage);
+
+    try{
+      // Keep the existing Service Worker update check for normal SW releases,
+      // but additionally ask the active worker to compare the live index.html
+      // against the cached copy. This detects HTML-only deployments without
+      // requiring any version-number change.
+      await registration.update();
+      if(registration.waiting){
+        clearTimeout(timer);
+        navigator.serviceWorker.removeEventListener('message',onMessage);
+        showUpdateNotice(registration.waiting);
+        finish('A new version of Stickies is ready to install.');
+        return;
+      }
+      const target=registration.active||navigator.serviceWorker.controller;
+      if(target) target.postMessage({type:'CHECK_APP_UPDATE'});
+      else {
+        clearTimeout(timer);
+        navigator.serviceWorker.removeEventListener('message',onMessage);
+        finish(manual ? "You're using the latest version of Stickies." : '');
+      }
+    }catch(error){
+      console.warn('Stickies update check failed:',error);
+      clearTimeout(timer);
+      navigator.serviceWorker.removeEventListener('message',onMessage);
+      finish(manual ? 'Could not check for updates. Please try again.' : '');
     }
   }
 
@@ -3938,7 +3916,12 @@ updateOfflineIndicator();
   });
   if(updateNow) updateNow.addEventListener('click',()=>{
     if(waitingWorker) waitingWorker.postMessage({type:'SKIP_WAITING'});
-    else if(registration && registration.waiting) registration.waiting.postMessage({type:'SKIP_WAITING'});
+    else if(registration && registration.waiting){
+      registration.waiting.postMessage({type:'SKIP_WAITING'});
+    }else if(registration && (registration.active||navigator.serviceWorker.controller)){
+      const target=registration.active||navigator.serviceWorker.controller;
+      target.postMessage({type:'APPLY_APP_UPDATE'});
+    }
     hideUpdateNotice();
   });
   if(updateLater) updateLater.addEventListener('click',hideUpdateNotice);
