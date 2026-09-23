@@ -1,0 +1,3758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Stickies - Desktop Notes</title>
+<meta name="description" content="A private, offline-first desktop sticky notes app. Your notes never leave your device unless you choose to sync them to your own Google Drive.">
+<meta name="theme-color" content="#FACC15">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Stickies">
+<meta name="mobile-web-app-capable" content="yes">
+<style>
+:root{
+  --toolbar-h: 96px;
+  --app-bg: #F1F5F9;
+  --ink: #1E293B;
+  --accent: #CA8A04;
+}
+*{box-sizing:border-box;}
+[hidden]{display:none !important;}
+html,body{
+  margin:0; padding:0; height:100%;
+  font-family: system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  background: var(--app-bg);
+  color: var(--ink);
+  overflow:hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+button{font-family:inherit; cursor:pointer;}
+input,select,textarea{font-family:inherit;}
+#app{position:fixed; inset:0; display:flex; flex-direction:column;}
+
+/* ---------- Toolbar ---------- */
+#toolbar{
+  flex:0 0 auto; background:#fff; border-bottom:1px solid #E2E8F0;
+  box-shadow:0 1px 3px rgba(0,0,0,.06); position:relative;
+  /* NOTE: intentionally no z-index here. #toolbar used to set z-index:500,
+     which (combined with position:relative) created its OWN stacking context.
+     That trapped the Templates/New-Sticky dropdown menus (.tb-menu, z-index
+     9999999) inside that context, so their huge z-index only ever competed
+     against other toolbar children — never against pinned stickies, whose
+     z-index runs into the millions. Result: those menus rendered behind
+     pinned notes. Without an explicit z-index on #toolbar, .tb-menu's own
+     z-index is compared globally, so it now always wins. */
+}
+.tb-row{display:flex; align-items:center; gap:8px; padding:8px 12px; flex-wrap:wrap;}
+.tb-brand{display:flex; align-items:center; gap:8px; margin-right:8px;}
+.tb-brand .logo{width:30px;height:30px;border-radius:8px;}
+.tb-brand .titles{line-height:1.1;}
+.tb-brand .titles b{font-size:15px;}
+.tb-brand .titles span{display:block;font-size:10px;color:#94A3B8;}
+.tb-btn{
+  display:flex; align-items:center; gap:6px; padding:7px 12px; border-radius:8px;
+  border:1px solid #E2E8F0; background:#fff; color:#334155; font-size:13px; font-weight:500;
+  white-space:nowrap;
+}
+.tb-btn:hover{background:#F8FAFC;}
+.tb-btn.primary{background:#F59E0B; border-color:#F59E0B; color:#fff;}
+.tb-btn.primary:hover{background:#D97706;}
+.tb-btn.active{background:#FEF3C7; border-color:#FACC15; color:#92400E;}
+.tb-btn.icon-only{padding:7px 9px;}
+.tb-sep{width:1px; align-self:stretch; background:#E2E8F0; margin:2px 4px;}
+.tb-input{
+  padding:7px 10px; border:1px solid #E2E8F0; border-radius:8px; font-size:13px; min-width:150px;
+}
+.tb-dropdown{position:relative; display:inline-flex; white-space:nowrap;}
+.tb-menu{
+  position:absolute; top:calc(100% + 6px); left:0; background:#fff; border:1px solid #E2E8F0;
+  border-radius:10px; box-shadow:0 10px 30px rgba(0,0,0,.15); min-width:190px; padding:6px;
+  z-index:9999999; display:none; max-height:70vh; overflow:auto;
+}
+.tb-menu.open{display:block;}
+.tb-menu-item{
+  display:flex; align-items:center; gap:8px; padding:8px 10px; border-radius:6px; font-size:13px; color:#334155;
+}
+.tb-menu-item:hover{background:#F1F5F9;}
+.tb-menu-item.danger{color:#DC2626;}
+.tb-menu-divider{height:1px; background:#E2E8F0; margin:4px 2px;}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:#94A3B8;flex:0 0 auto;}
+.count-badge{
+  position:absolute; top:-6px; right:-6px; background:#DC2626; color:#fff; font-size:10px; font-weight:700;
+  min-width:16px; height:16px; border-radius:99px; display:flex; align-items:center; justify-content:center; padding:0 4px;
+}
+.sync-dot.syncing{background:#F59E0B; animation:pulse 1s infinite;}
+.sync-dot.synced{background:#22C55E;}
+.sync-dot.error{background:#EF4444;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+
+/* ---------- Main row: sidebar + canvas ---------- */
+#main-row{flex:1 1 auto; display:flex; min-height:0;}
+
+/* ---------- Groups sidebar ---------- */
+#sidebar{
+  flex:0 0 232px; background:#fff; border-right:1px solid #E2E8F0; overflow-y:auto;
+  display:flex; flex-direction:column;
+}
+.sb-head{
+  display:flex; align-items:center; justify-content:space-between; padding:12px 14px 8px;
+  font-size:13px; color:#334155; position:sticky; top:0; background:#fff; z-index:2;
+}
+.sb-head button{background:#F1F5F9; border:none; width:24px; height:24px; border-radius:7px; font-size:12px; color:#475569; flex:0 0 auto;}
+#sidebar{transition:flex-basis .15s ease;}
+#sidebar.collapsed{flex-basis:0; width:0; overflow:hidden; border-right:none;}
+#btn-expand-sidebar{
+  flex:0 0 auto; width:22px; border:none; border-right:1px solid #E2E8F0; background:#fff; color:#94A3B8; cursor:pointer; font-size:13px;
+}
+#btn-expand-sidebar:hover{background:#F8FAFC; color:#475569;}
+#btn-expand-sidebar[hidden]{display:none;}
+.sb-head button:hover{background:#E2E8F0;}
+#sb-list{padding:2px 8px 14px;}
+.sb-row{
+  display:flex; align-items:center; gap:8px; padding:8px 8px; border-radius:8px; margin-bottom:2px; cursor:pointer; font-size:13px;
+}
+.sb-row:hover{background:#F8FAFC;}
+.sb-row.active{background:#FEF3C7; color:#92400E; font-weight:700;}
+.sb-row .sb-icon{font-size:14px; flex:0 0 auto;}
+.sb-color{width:22px; height:22px; border-radius:7px; flex:0 0 auto; border:1px solid rgba(0,0,0,.15); cursor:pointer; font-size:11px; display:flex; align-items:center; justify-content:center; padding:0;}
+.sb-icon-btn{width:22px; height:22px; border-radius:7px; flex:0 0 auto; border:none; background:rgba(255,255,255,.6); cursor:pointer; font-size:11px; display:flex; align-items:center; justify-content:center; padding:0;}
+.sb-icon-btn:hover{background:rgba(255,255,255,.9);}
+.sb-row-hidden{opacity:.5;}
+.sb-row-tinted{border-radius:8px;}
+.sb-color:hover{filter:brightness(0.95);}
+.sb-row .sb-name{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.sb-name-input{flex:1; min-width:0; font-size:13px; font-family:inherit; padding:2px 4px; border:1px solid #CA8A04; border-radius:4px; background:#fff;}
+.sb-row .sb-count{font-size:11px; color:#94A3B8; flex:0 0 auto;}
+.sb-row.active .sb-count{color:#B45309;}
+.sb-row .sb-del{background:transparent; border:none; font-size:11px; opacity:0; padding:2px 4px; flex:0 0 auto; color:#94A3B8;}
+.sb-row:hover .sb-del{opacity:1;}
+.sb-row .sb-del:hover{color:#DC2626;}
+.sb-sep{height:1px; background:#F1F5F9; margin:8px 4px;}
+
+/* ---------- Canvas ---------- */
+#canvas-wrap{flex:1 1 auto; position:relative; overflow:auto; background:
+  radial-gradient(circle, #E2E8F0 1px, transparent 1px) 0 0/22px 22px, var(--app-bg);
+}
+#canvas{position:relative;}
+#notes-layer{position:absolute; top:0; left:0;}
+
+/* ---------- Sticky Note ---------- */
+.note{
+  position:absolute; display:flex; flex-direction:column; border-radius:10px;
+  box-shadow:0 4px 14px rgba(0,0,0,.16); overflow:hidden; min-width:150px; min-height:44px;
+  border:1px solid rgba(0,0,0,.08);
+  /* overflow:hidden clips this note's own rendering to its rounded corners, but by
+     itself does NOT make the note's hit-testing follow that shape — its rectangular
+     bounding box still intercepts pointer events in the 4 corner slivers even where
+     nothing is visibly drawn there, silently stealing clicks meant for a note visible
+     underneath through that rounded cutout. clip-path constrains hit-testing to match. */
+  clip-path: inset(0 round 10px);
+}
+.note.dragging, .note.resizing{box-shadow:0 14px 34px rgba(0,0,0,.30); z-index:9999 !important;}
+.note-header{
+  display:flex; align-items:center; gap:2px; padding:5px 6px; cursor:grab; user-select:none; touch-action:none;
+  flex:0 0 auto; font-size:12px; font-weight:600;
+}
+.note.locked .note-header{cursor:default;}
+.note-header .grip{opacity:.5; font-size:12px; padding:0 2px;}
+.note-header .group-chip{
+  font-size:10px; font-weight:600; padding:2px 6px; border-radius:99px; background:rgba(255,255,255,.55);
+  white-space:nowrap; max-width:70px; overflow:hidden; text-overflow:ellipsis;
+}
+.note-header .title-label{
+  flex:1; min-width:0; font-weight:700; font-size:12.5px;
+  color:inherit; padding:2px 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.note-header .settings-btn{font-size:14px;}
+.note-header .hbtn{
+  background:transparent; border:none; padding:3px; border-radius:5px; font-size:13px; color:inherit; opacity:.75; flex:0 0 auto;
+}
+.note-header .hbtn:hover{opacity:1; background:rgba(255,255,255,.4);}
+.note-header .hbtn{touch-action:manipulation; -webkit-tap-highlight-color:transparent;}
+.note-header .settings-btn{touch-action:manipulation;}
+.md-edit-line .edit-marker{touch-action:manipulation;}
+.note-toolbar{
+  display:flex; align-items:center; gap:2px; padding:3px 6px; flex:0 0 auto; border-top:1px solid rgba(0,0,0,.06);
+  position:relative;
+}
+.note-toolbar .nbtn{
+  background:transparent; border:none; padding:4px 6px; border-radius:5px; font-size:12px; color:inherit; opacity:.85;
+}
+.note-toolbar .nbtn:hover{background:rgba(0,0,0,.06);}
+.note-toolbar .font-label{font-size:10px; font-weight:600; opacity:.7; margin-left:auto; margin-right:4px;}
+.note-body{
+  flex:1 1 auto; overflow:auto; padding:8px 10px; outline:none; white-space:pre-wrap; word-break:break-word;
+  font-size:13.5px; line-height:1.45;
+}
+.note.rolled-up .note-body, .note.rolled-up .note-toolbar, .note.rolled-up .note-tags{display:none;}
+.note.rolled-up{height:auto !important; min-height:0;}
+.note mark.hl{background:#FDE047; color:#1E293B; border-radius:2px; padding:0 1px;}
+.note .chk{cursor:pointer;}
+.note .note-body ul, .note .note-body ol{margin:2px 0; padding-left:20px;}
+.note .note-body li{margin:0; padding:0; line-height:1.4;}
+/* Keep checklist alignment identical in edit and view modes. */
+.note .md-check-line{display:flex; align-items:flex-start; gap:6px; margin:2px 0; padding:0; line-height:1.4;}
+.note .md-check-line .chk{flex:0 0 1.15em; width:1.15em; display:inline-flex; justify-content:center; align-items:flex-start; cursor:pointer; user-select:none; line-height:1.4;}
+.note .md-edit-line{display:flex; align-items:flex-start; gap:6px; margin:0; padding:0; line-height:1.4; min-height:1.4em;}
+.note .md-edit-line .edit-marker{flex:0 0 1.15em; width:1.15em; display:inline-flex; justify-content:center; align-items:flex-start; line-height:1.4; cursor:pointer; user-select:none;}
+.note .md-edit-line .edit-body{flex:1 1 auto; min-width:0; outline:none;}
+.note-body[data-role="body"]{padding:8px 10px;}
+.note-body[data-role="edit"]{padding:8px 10px; overflow:auto; outline:none; white-space:normal; word-break:break-word; touch-action:manipulation;}
+.md-edit-line{display:flex; align-items:flex-start; min-height:1.4em; line-height:1.45; padding:0; margin:0;}
+.md-edit-line .edit-marker{flex:0 0 auto; width:22px; min-width:22px; text-align:left; user-select:none; -webkit-user-select:none; cursor:pointer;}
+.md-edit-line[data-type="plain"] .edit-marker{width:0; min-width:0; overflow:hidden;}
+.md-edit-line .edit-body{flex:1 1 auto; min-width:0; outline:none; white-space:pre-wrap; word-break:break-word;}
+.md-edit-line .edit-body:empty::after{content:"\00a0";}
+
+.date-icon{margin-left:auto; cursor:pointer; font-size:13px; opacity:.75; padding:4px 6px; user-select:none;}
+.nbtn-icon-img{width:14px; height:14px; vertical-align:middle; display:block;}
+.date-icon:hover{opacity:1;}
+.note-tags{display:flex; gap:4px; flex-wrap:wrap; align-items:center; padding:4px 8px 6px; font-size:10px; flex:0 0 auto;}
+.note-tags .tag{background:rgba(0,0,0,.07); padding:1px 6px; border-radius:99px;}
+.note-tags .tag-input{
+  font-size:10px; padding:1px 6px; border-radius:99px; border:1px solid #CA8A04; background:#fff; color:#1E293B;
+  width:80px; font-family:inherit;
+}
+.note-tags .time{margin-left:auto; opacity:.55; font-size:10px; white-space:nowrap;}
+.note .resize-handle{
+  position:absolute; right:0; bottom:0; width:20px; height:20px; cursor:nwse-resize; z-index:20; touch-action:none; -webkit-user-select:none; user-select:none;
+  background: linear-gradient(135deg, transparent 50%, rgba(0,0,0,.25) 50%);
+}
+.note .resize-e{position:absolute; right:-3px; top:8px; bottom:18px; width:9px; cursor:ew-resize; z-index:20; touch-action:none;}
+.note .resize-s{position:absolute; bottom:-3px; left:8px; right:18px; height:9px; cursor:ns-resize; z-index:20; touch-action:none;}
+.note.rolled-up .resize-handle, .note.rolled-up .resize-e, .note.rolled-up .resize-s{display:none;}
+.swatch-menu, .font-menu{
+  position:absolute; top:calc(100% + 4px); left:0; background:#fff !important; color:#1E293B !important;
+  border:1px solid #CBD5E1; border-radius:10px; box-shadow:0 12px 30px rgba(0,0,0,.28);
+  padding:10px; z-index:99999; width:240px; display:none; opacity:1 !important;
+}
+.swatch-menu.open, .font-menu.open{display:block;}
+.swatch-grid{display:grid; grid-template-columns:repeat(5,1fr); gap:6px; margin-bottom:8px;}
+.swatch{width:28px;height:28px;border-radius:7px;border:2px solid transparent; cursor:pointer;}
+.swatch.selected{border-color:#1E293B;}
+.menu-label{font-size:11px; font-weight:600; color:#64748B; margin:6px 0 3px;}
+.opacity-row{display:flex; align-items:center; gap:8px; font-size:11px; color:#334155;}
+.opacity-row input[type=range]{flex:1;}
+.custom-color-row{display:flex; align-items:center; gap:6px; margin-top:6px;}
+.custom-color-row input[type=color]{width:32px; height:26px; border:1px solid #CBD5E1; border-radius:6px; padding:0;}
+.font-menu select{width:100%; padding:6px; border:1px solid #CBD5E1; border-radius:6px; font-size:12px; margin-bottom:8px; background:#fff; color:#1E293B;}
+.font-size-row{display:flex; gap:4px;}
+.font-size-row button{flex:1; padding:5px; border:1px solid #CBD5E1; border-radius:6px; background:#fff; color:#1E293B; font-size:11px;}
+.font-size-row button.selected{background:#FEF3C7; border-color:#FACC15; font-weight:700;}
+
+/* ---------- Group icon ---------- */
+.group-icon{
+  position:absolute; width:230px; border-radius:12px; box-shadow:0 4px 14px rgba(0,0,0,.14);
+  border:1px solid rgba(0,0,0,.08); overflow:hidden; user-select:none;
+}
+.group-head{display:flex; align-items:center; gap:6px; padding:9px 10px; cursor:grab; font-weight:700; font-size:13px;}
+.group-head .gicon{font-size:15px;}
+.group-head input.gname{flex:1; min-width:0; background:transparent; border:none; font-weight:700; font-size:13px; outline:none; color:inherit;}
+.group-head .gbtn{background:rgba(255,255,255,.5); border:none; border-radius:6px; padding:3px 6px; font-size:12px; color:inherit;}
+.group-head .gbtn:hover{background:rgba(255,255,255,.8);}
+.group-foot{display:flex; align-items:center; justify-content:space-between; padding:7px 10px; font-size:11px; background:rgba(255,255,255,.35);}
+.group-foot .gcount{opacity:.85;}
+.group-color-row{display:flex; gap:5px; padding:8px 10px; background:rgba(255,255,255,.5); flex-wrap:wrap;}
+
+/* ---------- Modal shell ---------- */
+.modal-overlay{
+  position:fixed; inset:0; background:rgba(15,23,42,.55); z-index:2000; display:flex;
+  align-items:center; justify-content:center; padding:16px;
+}
+.modal-overlay[hidden]{display:none;}
+.modal-box{
+  background:#fff; border-radius:14px; width:100%; max-width:560px; max-height:88vh; overflow:auto;
+  box-shadow:0 20px 60px rgba(0,0,0,.35);
+}
+.modal-box.wide{max-width:900px;}
+.modal-head{
+  display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid #E2E8F0;
+  position:sticky; top:0; background:#fff; z-index:2;
+}
+.modal-head h2{margin:0; font-size:17px;}
+.modal-head button{background:#F1F5F9; border:none; width:30px;height:30px;border-radius:8px;font-size:16px;}
+.modal-body{padding:18px 20px;}
+.field{margin-bottom:16px;}
+.field label{display:block; font-size:12.5px; font-weight:600; color:#475569; margin-bottom:6px;}
+.field .hint{font-size:11.5px; color:#94A3B8; margin-top:4px;}
+.field input[type=text], .field input[type=number], .field input[type=password], .field select{
+  width:100%; padding:9px 10px; border:1px solid #E2E8F0; border-radius:8px; font-size:13px;
+}
+.field-row{display:flex; gap:12px;}
+.field-row .field{flex:1;}
+.seg{display:flex; border:1px solid #E2E8F0; border-radius:8px; overflow:hidden;}
+.seg button{flex:1; padding:8px; border:none; background:#fff; font-size:12.5px; border-right:1px solid #E2E8F0;}
+.seg button:last-child{border-right:none;}
+.seg button.selected{background:#FEF3C7; font-weight:700; color:#92400E;}
+.toggle-row{display:flex; align-items:center; justify-content:space-between; padding:10px 0; border-top:1px solid #F1F5F9;}
+.switch{position:relative; width:40px; height:22px; flex:0 0 auto;}
+.switch input{opacity:0; width:0; height:0;}
+.slider-tog{position:absolute; inset:0; background:#CBD5E1; border-radius:99px; transition:.15s;}
+.slider-tog:before{content:""; position:absolute; width:16px; height:16px; left:3px; top:3px; background:#fff; border-radius:50%; transition:.15s;}
+.switch input:checked + .slider-tog{background:#F59E0B;}
+.switch input:checked + .slider-tog:before{transform:translateX(18px);}
+.modal-footer{padding:14px 20px; border-top:1px solid #E2E8F0; display:flex; justify-content:flex-end; gap:8px; position:sticky; bottom:0; background:#fff;}
+.btn{padding:9px 16px; border-radius:8px; border:1px solid #E2E8F0; background:#fff; font-size:13px; font-weight:600;}
+.btn.primary{background:#F59E0B; border-color:#F59E0B; color:#fff;}
+.btn.danger{background:#FEE2E2; border-color:#FCA5A5; color:#B91C1C;}
+.section-title{font-size:13px; font-weight:700; color:#334155; margin:18px 0 10px; padding-top:6px; border-top:1px solid #F1F5F9;}
+.stg-label{font-size:11px; font-weight:700; color:#94A3B8; letter-spacing:.04em; text-transform:uppercase; margin:22px 0 10px; display:flex; align-items:center; gap:6px; padding-top:14px; border-top:1px solid #F1F5F9;}
+.stg-label:first-child{margin-top:0; padding-top:0; border-top:none;}
+.stg-cards{display:flex; gap:10px; flex-wrap:wrap;}
+.stg-card{
+  flex:1; min-width:130px; border:1.5px solid #E2E8F0; border-radius:10px; padding:10px 12px; cursor:pointer; background:#fff; transition:border-color .1s, background .1s;
+}
+.stg-card:hover{border-color:#FACC15;}
+.stg-card b{display:block; font-size:13px; color:#1E293B; margin-bottom:2px;}
+.stg-card small{display:block; font-size:11px; color:#94A3B8; line-height:1.3;}
+.stg-card.selected{border-color:#F59E0B; background:#FFFBEB;}
+.stg-card.selected b{color:#92400E;}
+.stg-row2{display:grid; grid-template-columns:1fr 1fr; gap:20px;}
+.stg-slider-wrap{margin-top:4px;}
+.stg-slider-wrap input[type=range]{width:100%;}
+.stg-slider-labels{display:flex; justify-content:space-between; font-size:10.5px; color:#94A3B8; margin-top:2px;}
+.stg-slider-title{font-size:12.5px; color:#334155; margin-bottom:2px; display:flex; justify-content:space-between;}
+.stg-slider-title b{color:#1E293B;}
+.stg-color-row{display:flex; gap:10px; flex-wrap:wrap; margin-top:4px;}
+.stg-color-dot{
+  width:32px; height:32px; border-radius:50%; cursor:pointer; border:2px solid transparent;
+  display:flex; align-items:center; justify-content:center; font-size:14px; color:#1E293B; position:relative;
+}
+.stg-color-dot.selected{box-shadow:0 0 0 2px #fff, 0 0 0 4px #1E293B;}
+.stg-field label{display:block; font-size:12.5px; font-weight:600; color:#475569; margin-bottom:6px;}
+.stg-field select{width:100%; padding:9px 10px; border:1px solid #E2E8F0; border-radius:8px; font-size:13px;}
+.section-title:first-child{border-top:none; margin-top:0;}
+.feature-list{list-style:none; padding:0; margin:0; display:grid; gap:10px;}
+.about-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px;}
+.about-card{border:1px solid #F1F5F9; background:#F8FAFC; border-radius:10px; padding:12px 14px; display:flex; flex-wrap:wrap; align-items:center; gap:9px;}
+.info-popup{padding:12px !important;}
+.note-info-menu{position:fixed; min-width:240px; max-width:310px; background:#fff; color:#1E293B; border:1px solid #CBD5E1; border-radius:10px; box-shadow:0 12px 30px rgba(0,0,0,.25); padding:10px; z-index:9000001;}
+.note-info-menu .info-title{font-size:13px;font-weight:700;margin-bottom:7px;}
+.note-info-menu .info-row{display:flex;justify-content:space-between;gap:12px;padding:5px 2px;border-top:1px solid #F1F5F9;font-size:11px;}
+.note-info-menu .info-row span:first-child{color:#64748B;}
+.note-info-menu .info-row span:last-child{font-weight:600;text-align:right;word-break:break-word;}
+.info-grid{display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-top:8px;}
+.info-card{border:1px solid #F1F5F9; background:#F8FAFC; border-radius:8px; padding:7px 9px;}
+.info-card small{display:block; font-size:9.5px; color:#94A3B8; text-transform:uppercase; letter-spacing:.03em; margin-bottom:2px;}
+.info-card b{display:block; font-size:11.5px; color:#1E293B; font-weight:600; word-break:break-word;}
+.about-card .emoji{font-size:16px; width:30px; height:30px; border-radius:8px; background:#FEF3C7; display:flex; align-items:center; justify-content:center; flex:0 0 auto;}
+.about-card b{font-size:13px; color:#1E293B;}
+.about-card small{flex-basis:100%; font-size:11.5px; color:#64748B; line-height:1.4;}
+.about-card:nth-child(4n+2) .emoji{background:#FCE7F3;}
+.about-card:nth-child(4n+3) .emoji{background:#DCFCE7;}
+.about-card:nth-child(4n+4) .emoji{background:#EDE9FE;}
+@media (max-width:560px){ .about-grid{grid-template-columns:1fr;} }
+#modal-about .modal-head{background:#FFFBEB;}
+#modal-about .modal-footer{background:#FAFAF9;}
+#modal-settings .modal-head{background:#FFFBEB;}
+#modal-settings .modal-footer{background:#FAFAF9;}
+.feature-list li{display:flex; gap:10px; align-items:flex-start; font-size:13px; color:#334155; line-height:1.4;}
+.feature-list .emoji{font-size:18px;}
+
+/* ---------- Archive drawer ---------- */
+#archive-drawer{
+  position:fixed; top:0; right:0; bottom:0; width:340px; max-width:92vw; background:#fff; z-index:1500;
+  box-shadow:-10px 0 30px rgba(0,0,0,.2); transform:translateX(100%); transition:transform .2s; display:flex; flex-direction:column;
+}
+#archive-drawer.open{transform:translateX(0);}
+.archive-head{display:flex; align-items:center; justify-content:space-between; padding:16px; border-bottom:1px solid #E2E8F0;}
+.archive-list{flex:1; overflow:auto; padding:10px;}
+.archive-item{border:1px solid #E2E8F0; border-radius:8px; padding:10px; margin-bottom:8px;}
+.archive-item .t{font-weight:700; font-size:13px; margin-bottom:2px;}
+.archive-item .c{font-size:11px; color:#64748B; white-space:pre-wrap; max-height:40px; overflow:hidden;}
+.archive-item .row{display:flex; gap:6px; margin-top:8px;}
+.archive-item .row button{flex:1; padding:6px; font-size:11px; border-radius:6px; border:1px solid #E2E8F0; background:#F8FAFC;}
+.archive-empty{text-align:center; color:#94A3B8; font-size:13px; padding:30px 10px;}
+
+/* ---------- Sticky Manager page ---------- */
+#manager-page{position:fixed; inset:0; background:#F8FAFC; z-index:1800; display:flex; flex-direction:column;}
+#manager-page[hidden]{display:none;}
+.mgr-top{display:flex; align-items:center; gap:14px; padding:12px 16px; background:#fff; border-bottom:1px solid #E2E8F0; flex-wrap:wrap;}
+.mgr-title-block b{font-size:15px;}
+.mgr-total-badge{margin-left:8px; background:#FEF3C7; color:#92400E; font-size:11px; font-weight:700; padding:2px 8px; border-radius:99px;}
+.mgr-subtitle{font-size:11.5px; color:#94A3B8; margin-top:2px;}
+.mgr-body{flex:1; display:flex; overflow:hidden;}
+.mgr-side{width:230px; flex:0 0 auto; border-right:1px solid #E2E8F0; background:#fff; overflow:auto; padding:10px;}
+.mgr-side .sb-head{padding:2px 2px 10px;}
+.mgr-side .mside-item{padding:9px 10px; border-radius:8px; font-size:13px; display:flex; justify-content:space-between; margin-bottom:2px;}
+.mgr-side .mside-item.active{background:#FEF3C7; color:#92400E; font-weight:700;}
+.mgr-main{flex:1; overflow:auto; padding:12px 16px;}
+.mgr-searchbar{display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap;}
+.mgr-searchbar #mgr-search{flex:1; min-width:200px;}
+.mgr-view-btn{padding:8px 12px;}
+.mgr-bulkbar{display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap; background:#fff; border:1px solid #E2E8F0; border-radius:10px; padding:8px 12px;}
+.dot{width:10px;height:10px;border-radius:50%; display:inline-block; margin-right:6px;}
+.mgr-group-heading{display:flex; align-items:center; gap:8px; margin:18px 0 8px; font-size:13px; font-weight:700; color:#334155;}
+.mgr-group-heading:first-child{margin-top:0;}
+.mgr-group-heading .cnt{background:#F1F5F9; color:#64748B; font-size:11px; font-weight:600; padding:2px 8px; border-radius:99px;}
+.mgr-card{
+  display:flex; align-items:flex-start; gap:10px; background:#fff; border:1px solid #E2E8F0; border-radius:10px; padding:12px 14px; margin-bottom:8px;
+}
+.mgr-card.deleted{opacity:.6; background:#FAFAFA;}
+.mgr-card input[type=checkbox]{margin-top:3px; flex:0 0 auto;}
+.mgr-card .dot{margin-top:5px; flex:0 0 auto;}
+.mgr-card-main{flex:1; min-width:0;}
+.mgr-card-top{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:4px;}
+.mgr-card-top b{font-size:13.5px; color:#1E293B;}
+.mgr-group-select{font-size:11.5px; padding:3px 6px; border-radius:8px; border:1px solid #E2E8F0; background:#F8FAFC; color:#334155;}
+.mgr-pin-badge{background:#FEF3C7; color:#92400E; font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:99px;}
+.mgr-card-content{font-size:12px; color:#64748B; line-height:1.4; margin-bottom:6px; max-height:36px; overflow:hidden; text-overflow:ellipsis;}
+.mgr-card-meta{display:flex; flex-wrap:wrap; gap:12px; font-size:10.5px; color:#94A3B8; margin-bottom:4px;}
+.mgr-card-tags{display:flex; gap:5px; flex-wrap:wrap;}
+.mgr-card-tags span{background:#F1F5F9; padding:1px 6px; border-radius:99px; font-size:10px; color:#64748B;}
+.mgr-card-actions{display:flex; flex-direction:column; gap:6px; flex:0 0 auto; align-items:flex-end;}
+.mgr-card-actions .row{display:flex; gap:6px;}
+.mgr-card-actions button{background:#fff; border:1px solid #E2E8F0; border-radius:8px; padding:6px 8px; font-size:11.5px; color:#334155; cursor:pointer;}
+.mgr-card-actions button:hover{background:#F8FAFC;}
+.mgr-card-actions .open-btn{white-space:nowrap;}
+.mgr-card-actions .danger-icon{color:#DC2626; border-color:#FCA5A5;}
+.mgr-empty{text-align:center; color:#94A3B8; font-size:13px; padding:40px;}
+
+/* ---------- misc ---------- */
+#install-banner{
+  position:fixed; left:12px; right:12px; bottom:12px; background:#1E293B; color:#fff; border-radius:12px;
+  padding:12px 14px; display:flex; align-items:center; gap:10px; z-index:1200; box-shadow:0 10px 30px rgba(0,0,0,.3);
+}
+#install-banner[hidden]{display:none;}
+#install-banner button{background:#F59E0B; border:none; color:#fff; padding:8px 12px; border-radius:8px; font-weight:700; font-size:12.5px;}
+#install-banner .ib-x{background:transparent; color:#94A3B8; padding:4px 8px;}
+#offline-indicator{
+  position:fixed; top:8px; left:50%; transform:translateX(-50%); background:#1E293B; color:#fff; font-size:12px;
+  padding:6px 14px; border-radius:99px; z-index:3000; display:flex; align-items:center; gap:6px; box-shadow:0 6px 18px rgba(0,0,0,.25);
+}
+#offline-indicator[hidden]{display:none;}
+#toast{
+  position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:#1E293B; color:#fff; font-size:13px;
+  padding:10px 16px; border-radius:8px; z-index:4000; box-shadow:0 8px 24px rgba(0,0,0,.3); opacity:0; pointer-events:none; transition:opacity .2s;
+}
+#toast.show{opacity:1;}
+@media (max-width:720px){
+  .tb-brand .titles{display:none;}
+  .mgr-side{width:150px;}
+  .modal-box{max-height:94vh;}
+}
+
+/* ---------- PWA update notification / manual update check ---------- */
+.stk-update-notice{
+  position:fixed; left:16px; right:16px;
+  bottom:calc(16px + env(safe-area-inset-bottom)); z-index:99999;
+  display:none; padding:14px; border:1px solid rgba(202,138,4,.45);
+  border-radius:14px; background:#fff; color:#1E293B;
+  box-shadow:0 10px 28px rgba(0,0,0,.22);
+}
+.stk-update-notice.is-visible{display:block;}
+.stk-update-title{margin:0 0 5px;font-size:15px;font-weight:800;}
+.stk-update-text{margin:0 0 12px;color:#64748B;font-size:13px;line-height:1.45;}
+.stk-update-actions{display:flex;gap:8px;justify-content:flex-end;}
+.stk-update-actions button{min-height:40px;padding:8px 15px;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;}
+.stk-update-later{border:1px solid #E2E8F0;background:transparent;color:#334155;}
+.stk-update-now{border:0;background:#CA8A04;color:#fff;}
+.stk-check-update-btn{
+  width:100%;min-height:42px;display:flex;align-items:center;justify-content:center;gap:8px;
+  margin-top:12px;padding:9px 14px;border:1px solid #E2E8F0;border-radius:10px;
+  background:transparent;color:#334155;font-size:14px;font-weight:700;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+.stk-check-update-btn:active{transform:scale(.99);}
+.stk-check-update-btn.is-checking{opacity:.65;pointer-events:none;}
+.stk-update-check-status{min-height:18px;margin-top:7px;text-align:center;color:#94A3B8;font-size:12px;}
+
+</style>
+</head>
+<body>
+<div id="stkUpdateNotice" class="stk-update-notice" role="status" aria-live="polite">
+  <div class="stk-update-title">✨ New version available</div>
+  <p class="stk-update-text">A newer version of Stickies is ready. Update now to get the latest improvements.</p>
+  <div class="stk-update-actions">
+    <button id="stkUpdateLater" class="stk-update-later" type="button">Later</button>
+    <button id="stkUpdateNow" class="stk-update-now" type="button">Update</button>
+  </div>
+</div>
+<div id="app">
+
+  <!-- ============ TOOLBAR ============ -->
+  <div id="toolbar">
+    <div class="tb-row">
+      <div class="tb-brand">
+        <img src="pwa-192x192.png" class="logo" alt="">
+        <div class="titles"><b>Stickies</b><span>Desktop Notes</span></div>
+      </div>
+
+      <div class="tb-dropdown">
+        <button class="tb-btn primary" id="btn-new-note">➕ New Sticky</button>
+        <button class="tb-btn primary" id="btn-new-note-chevron" style="padding:7px 9px; border-left:1px solid rgba(255,255,255,.35); margin-left:-6px; border-top-left-radius:0; border-bottom-left-radius:0;">▾</button>
+        <div class="tb-menu" id="menu-new-color" style="padding:10px; width:150px;">
+          <div class="swatch-grid" id="new-color-grid"></div>
+        </div>
+      </div>
+
+      <div class="tb-dropdown">
+        <button class="tb-btn" id="btn-templates">📄 Templates</button>
+        <div class="tb-menu" id="menu-templates"></div>
+      </div>
+
+      <button class="tb-btn" id="btn-toggle-view">🖥️ <span id="view-mode-label">Desktop</span></button>
+
+      <div class="tb-dropdown">
+        <button class="tb-btn" id="btn-organize">🧹 Auto Organize</button>
+        <div class="tb-menu" id="menu-organize">
+          <div class="tb-menu-item" data-organize="tile">▦ Tile Grid</div>
+          <div class="tb-menu-item" data-organize="cascade">🗂️ Cascade</div>
+          <div class="tb-menu-item" data-organize="group">🏷️ Group by Group</div>
+          <div class="tb-menu-item" data-organize="color">🎨 Group by Color</div>
+          <div class="tb-menu-item" data-organize="compact">📦 Compact (no gaps)</div>
+        </div>
+      </div>
+
+      <button class="tb-btn" id="btn-snap">🧲 Snap Grid</button>
+      <button class="tb-btn" id="btn-minimize-all">▬ Minimize All</button>
+
+      <div class="tb-sep"></div>
+
+      <input class="tb-input" id="search-input" type="text" placeholder="🔍 Find stickies, tags, groups...">
+
+      <button class="tb-btn" id="btn-manager" title="Sticky Manager">🗒️ Sticky Manager</button>
+      <button class="tb-btn" id="btn-archive" title="Trash" style="position:relative;">🗑️ Trash<span id="trash-badge" class="count-badge" hidden>0</span></button>
+    </div>
+    <div class="tb-row" style="padding-top:0;">
+      <button class="tb-btn" id="btn-sync">
+        <span class="sync-dot" id="sync-dot"></span>
+        <span id="sync-label">Sync with Google Drive</span>
+      </button>
+      <button class="tb-btn" id="btn-export">⬇️ Export JSON</button>
+      <button class="tb-btn" id="btn-import">⬆️ Import JSON</button>
+      <input type="file" id="file-import" accept=".json" hidden>
+      <div style="flex:1"></div>
+      <button class="tb-btn" id="btn-settings">⚙️ Settings</button>
+      <button class="tb-btn" id="btn-about">ℹ️ About</button>
+    </div>
+  </div>
+
+  <!-- ============ MAIN ROW: sidebar + canvas ============ -->
+  <div id="main-row">
+    <div id="sidebar">
+      <div class="sb-head">
+        <b>Groups</b>
+        <div style="display:flex; gap:4px;">
+          <button id="btn-add-group-sb" title="New group">➕</button>
+          <button id="btn-collapse-sidebar" title="Collapse panel">⮜</button>
+        </div>
+      </div>
+      <div id="sb-newgroup-row"></div>
+      <div id="sb-list"></div>
+    </div>
+    <button id="btn-expand-sidebar" title="Show Groups panel" hidden>☰</button>
+    <div id="canvas-wrap">
+      <div id="canvas">
+        <div id="notes-layer"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============ SETTINGS MODAL ============ -->
+<div class="modal-overlay" id="modal-settings" hidden>
+  <div class="modal-box">
+    <div class="modal-head">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="modal-head-icon">🎛️</div>
+        <div><h2>Stickies Settings</h2><div class="modal-subtitle">Configure default note placement, sizing, content, and appearance</div></div>
+      </div>
+      <button data-close="modal-settings">✕</button>
+    </div>
+    <div class="modal-body" id="settings-body"></div>
+    <div class="modal-footer">
+      <button class="btn danger" id="btn-reset-app">Reset App Data</button>
+      <button class="btn primary" data-close="modal-settings">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ABOUT MODAL ============ -->
+<div class="modal-overlay" id="modal-about" hidden>
+  <div class="modal-box">
+    <div class="modal-head"><h2>📌 About Stickies</h2><button data-close="modal-about">✕</button></div>
+    <div class="modal-body" id="about-body"></div>
+    <div class="modal-footer"><button class="btn primary" data-close="modal-about">Close</button></div>
+  </div>
+</div>
+
+<!-- ============ CONFIRM MODAL ============ -->
+<div class="modal-overlay" id="modal-confirm" hidden>
+  <div class="modal-box" style="max-width:400px;">
+    <div class="modal-head"><h2 id="confirm-title">Confirm</h2><button data-close="modal-confirm">✕</button></div>
+    <div class="modal-body"><p id="confirm-msg" style="font-size:13.5px;color:#475569;"></p><div id="confirm-extra"></div></div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-confirm">Cancel</button>
+      <button class="btn danger" id="confirm-ok-btn">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PROMPT MODAL (replaces native prompt()) ============ -->
+<div class="modal-overlay" id="modal-prompt" hidden>
+  <div class="modal-box" style="max-width:380px;">
+    <div class="modal-head"><h2 id="prompt-title">Enter value</h2><button id="prompt-x-btn">✕</button></div>
+    <div class="modal-body"><input type="text" id="prompt-input" class="tb-input" style="width:100%;"></div>
+    <div class="modal-footer">
+      <button class="btn" id="prompt-cancel-btn">Cancel</button>
+      <button class="btn primary" id="prompt-ok-btn">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ LINK MODAL (Ctrl+K) ============ -->
+<div class="modal-overlay" id="modal-link" hidden>
+  <div class="modal-box" style="max-width:380px;">
+    <div class="modal-head"><h2>Link</h2><button id="link-x-btn">✕</button></div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Display text</label>
+        <input type="text" id="link-text-input" class="tb-input" style="width:100%;" placeholder="New Link">
+      </div>
+      <div class="field">
+        <label>Address</label>
+        <input type="text" id="link-url-input" class="tb-input" style="width:100%;" placeholder="Link to an existing webpage">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="link-cancel-btn">Cancel</button>
+      <button class="btn primary" id="link-insert-btn">Insert</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ARCHIVE / TRASH DRAWER ============ -->
+<div id="archive-drawer">
+  <div class="archive-head">
+    <b>🗑️ Trash</b>
+    <div style="display:flex; gap:6px;">
+      <button class="tb-btn icon-only" id="btn-empty-trash" title="Empty Trash">🧨</button>
+      <button class="tb-btn icon-only" id="btn-close-archive" title="Close">✕</button>
+    </div>
+  </div>
+  <div class="archive-list" id="archive-list"></div>
+</div>
+
+<!-- ============ NOTE MANAGER PAGE ============ -->
+<div id="manager-page" hidden>
+  <div class="mgr-top">
+    <button class="tb-btn" id="btn-manager-close">← Home</button>
+    <div class="mgr-title-block">
+      <b>🗒️ Sticky Manager</b><span id="mgr-total-badge" class="mgr-total-badge">0 Total Stickies</span>
+      <div class="mgr-subtitle">Clean organized list view. Rearrange stickies across groups, bulk delete, export, and manage notes.</div>
+    </div>
+    <div style="flex:1"></div>
+    <button class="tb-btn" id="mgr-import">⬆️ Import</button>
+    <button class="tb-btn" id="mgr-export-selected">⬇️ Export View</button>
+    <button class="tb-btn primary" id="mgr-new-sticky">➕ New Sticky</button>
+  </div>
+  <div class="mgr-body">
+    <div class="mgr-side">
+      <div class="sb-head"><b>Desktop Groups</b></div>
+      <div id="mgr-side"></div>
+    </div>
+    <div class="mgr-main">
+      <div class="mgr-searchbar">
+        <input class="tb-input" id="mgr-search" placeholder="🔍 Search in all stickies (title, text, tags)...">
+        <select class="tb-input" id="mgr-sort" style="min-width:170px;">
+          <option value="updated_desc">Sort: Date Modified (Newest)</option>
+          <option value="created_desc">Sort: Newest created</option>
+          <option value="created_asc">Sort: Oldest created</option>
+          <option value="group">Sort: Group</option>
+          <option value="title">Sort: Title A-Z</option>
+        </select>
+        <div class="seg" style="width:auto;">
+          <button data-view="plain" class="mgr-view-btn">Plain List View</button>
+          <button data-view="grouped" class="mgr-view-btn selected">Organized by Groups</button>
+        </div>
+      </div>
+      <div class="mgr-bulkbar">
+        <label style="font-size:12px; display:flex; gap:5px; align-items:center;"><input type="checkbox" id="mgr-select-all"> <span id="mgr-count">0 of 0 selected</span></label>
+        <span id="mgr-clear-sel" style="font-size:12px; color:#CA8A04; cursor:pointer; text-decoration:underline;">Clear Selection</span>
+        <div style="flex:1"></div>
+        <select class="tb-input" id="mgr-move-to" style="min-width:170px;"><option value="">Move to group…</option></select>
+        <button class="tb-btn" id="mgr-move-btn">Move</button>
+        <button class="tb-btn" id="mgr-restore-btn" hidden>♻️ Restore selected</button>
+        <button class="tb-btn danger" id="mgr-delete-btn" style="color:#B91C1C;border-color:#FCA5A5;">Delete selected</button>
+      </div>
+      <div id="mgr-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MISC ============ -->
+<div id="install-banner" hidden>
+  <span style="font-size:20px;">📌</span>
+  <div style="flex:1;font-size:12.5px;">Install Stickies for offline, full-screen use.</div>
+  <button id="btn-do-install">Install</button>
+  <button class="ib-x" id="btn-dismiss-install">✕</button>
+</div>
+<div id="offline-indicator" hidden>📡 Offline — changes save locally</div>
+<div id="toast"></div>
+
+<script>
+const STICKIES_APP_VERSION = "1.0.0";
+/* ==================================================================
+   STICKIES — single-file vanilla JS app (no build step, no React)
+   ================================================================== */
+
+/* ---------------- Constants ---------------- */
+const NOTE_COLORS = {
+  yellow:   { id:'yellow',   name:'Subtle Yellow',  bg:'#FDF9C8', headerBg:'#FDF9C8', borderColor:'#D9C066', textColor:'#5C4A16', accentColor:'#8A7020', badgeBg:'#FDF9C8' },
+  blue:     { id:'blue',     name:'Soft Cyan',      bg:'#E0F2FE', headerBg:'#BAE6FD', borderColor:'#38BDF8', textColor:'#0C4A6E', accentColor:'#0284C7', badgeBg:'#BAE6FD' },
+  green:    { id:'green',    name:'Spring Green',   bg:'#DCFCE7', headerBg:'#BBF7D0', borderColor:'#4ADE80', textColor:'#14532D', accentColor:'#16A34A', badgeBg:'#BBF7D0' },
+  pink:     { id:'pink',     name:'Rose Pink',      bg:'#FFE4E6', headerBg:'#FECDD3', borderColor:'#FB7185', textColor:'#881337', accentColor:'#E11D48', badgeBg:'#FECDD3' },
+  purple:   { id:'purple',   name:'Lavender',       bg:'#F3E8FF', headerBg:'#E9D5FF', borderColor:'#C084FC', textColor:'#581C87', accentColor:'#9333EA', badgeBg:'#E9D5FF' },
+  orange:   { id:'orange',   name:'Warm Orange',    bg:'#FFEDD5', headerBg:'#FED7AA', borderColor:'#FB923C', textColor:'#7C2D12', accentColor:'#EA580C', badgeBg:'#FED7AA' },
+  mint:     { id:'mint',     name:'Fresh Mint',     bg:'#CCFBF1', headerBg:'#99F6E4', borderColor:'#2DD4BF', textColor:'#134E4A', accentColor:'#0D9488', badgeBg:'#99F6E4' },
+  slate:    { id:'slate',    name:'Slate White',    bg:'#F8FAFC', headerBg:'#E2E8F0', borderColor:'#94A3B8', textColor:'#0F172A', accentColor:'#475569', badgeBg:'#E2E8F0' },
+  charcoal: { id:'charcoal', name:'Dark Charcoal',  bg:'#1E293B', headerBg:'#0F172A', borderColor:'#475569', textColor:'#F8FAFC', accentColor:'#94A3B8', badgeBg:'#334155' },
+};
+const COLOR_ORDER = Object.keys(NOTE_COLORS);
+const FONT_FAMILIES = {
+  sans:  { id:'sans',  name:'Modern Sans',   css:'system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif' },
+  serif: { id:'serif', name:'Classic Serif', css:'Georgia,Cambria,"Times New Roman",Times,serif' },
+  mono:  { id:'mono',  name:'Code Mono',     css:'"SF Mono",Monaco,Inconsolata,"Fira Code","Courier New",monospace' },
+  handwriting: { id:'handwriting', name:'Casual Pen', css:'"Comic Sans MS","Segoe Print",cursive,sans-serif' },
+};
+const FONT_SIZES = { xs:'11px', sm:'12.5px', base:'13.5px', lg:'15.5px', xl:'18px' };
+const DEFAULT_GROUPS_LIST = ['General','Work','Personal','Projects','Ideas'];
+
+const LS_NOTES = 'stickies_app_notes_v1';
+const LS_SETTINGS = 'stickies_app_settings_v1';
+const LS_GROUPS = 'stickies_desktop_groups_v1';
+const LS_SYNC = 'stickies_sync_info_v1';
+
+// Google OAuth Client ID for the official Stickies deployment.
+// Users of the official Stickies deployment do NOT need to enter a Client ID.
+// If this project is forked/deployed under a different authorized origin,
+// replace this value with a Google OAuth Client ID configured for that deployment.
+const STICKIES_GOOGLE_CLIENT_ID = "YOUR_STICKIES_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com";
+
+const DEFAULT_SETTINGS = {
+  snapToGrid:false, gridSize:20,
+  defaultColor:'yellow', defaultGroup:'General',
+  defaultWidth:300, defaultHeight:250, defaultOpacity:0.9,
+  positionMode:'random', fixedX:60, fixedY:80,
+  contentMode:'blank',
+  canvasWidth:4200, canvasHeight:2800,
+  dragBehavior:'overlap',      // 'auto-adjust' | 'overlap'
+  confirmOnDelete:true,
+  googleClientId:STICKIES_GOOGLE_CLIENT_ID, autoSync:false,
+};
+
+function uid(prefix){ return prefix+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8); }
+function nowIso(){ return new Date().toISOString(); }
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function fmtTime(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  const diff = (Date.now()-d.getTime())/1000;
+  if(diff<60) return 'just now';
+  if(diff<3600) return Math.floor(diff/60)+'m ago';
+  if(diff<86400) return Math.floor(diff/3600)+'h ago';
+  if(diff<86400*7) return Math.floor(diff/86400)+'d ago';
+  return d.toLocaleDateString();
+}
+function pad2(n){ return String(n).padStart(2,'0'); }
+const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function to12h(d){ let h=d.getHours(); const ampm = h>=12?'PM':'AM'; h = h%12; if(h===0) h=12; return {h, ampm}; }
+function fmtClockTime(iso){
+  if(!iso) return '';
+  const d = new Date(iso); const {h,ampm} = to12h(d);
+  return pad2(h)+':'+pad2(d.getMinutes())+' '+ampm;
+}
+function fmtFullDateTime(iso){
+  if(!iso) return '';
+  const d = new Date(iso); const {h,ampm} = to12h(d);
+  return `${d.getDate()}-${MONTH_ABBR[d.getMonth()]}-${String(d.getFullYear()).slice(-2)} ${h}:${pad2(d.getMinutes())} ${ampm}`;
+}
+function fmtShortDateTime(iso){
+  if(!iso) return '';
+  const d = new Date(iso); const {h,ampm} = to12h(d);
+  return `${d.getDate()} ${MONTH_ABBR[d.getMonth()]}, ${h}:${pad2(d.getMinutes())} ${ampm}`;
+}
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toast._h); toast._h=setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+/* ---------------- Sample starter data (first run only) ---------------- */
+function sampleGroups(){
+  return [
+    { id:'group-general',  name:'General',  color:'yellow', icon:'📁' },
+    { id:'group-work',     name:'Work',     color:'blue',   icon:'💼' },
+    { id:'group-personal', name:'Personal', color:'green',  icon:'🏡' },
+  ];
+}
+function sampleNotes(){
+  const t = nowIso();
+  return [
+    { id:'sample-welcome', displayId:1, title:'📌 Welcome to Stickies!',
+      content:'Welcome to Stickies! 👋\n\n- Drag notes anywhere across the desktop canvas\n- Drop one near another and it aligns without overlapping\n- Click the header ▲ to minimize a note to its title bar\n- Adjust transparency to see through stickies\n- Customize font family & size\n- Type [] for a 🔲 checklist box, click it to tick ☑️',
+      color:'yellow', customColor:null, opacity:1, group:'General', x:15, y:15, width:390, height:270,
+      zIndex:10, isPinned:true, isRolledUp:false, isLocked:true, isDeleted:false, tags:['Guide','Welcome'],
+      fontFamily:'sans', fontSize:'base', createdAt:t, updatedAt:t },
+    { id:'sample-drive-sync', displayId:2, title:'☁️ Google Drive Sync & Offline',
+      content:'Notes can sync to your own personal Google Drive.\n\n1. Open Settings and connect your Google account\n2. Click "Sync with Google Drive" in the top bar\n3. Notes merge and stay in sync across devices\n4. 100% offline support via LocalStorage + installable PWA\n5. Infinite scrollable canvas for unlimited stickies!',
+      color:'blue', customColor:null, opacity:0.95, group:'Work', x:415, y:15, width:385, height:270,
+      zIndex:9, isPinned:false, isRolledUp:false, isLocked:true, isDeleted:false, tags:['Google Drive','Sync'],
+      fontFamily:'sans', fontSize:'base', createdAt:t, updatedAt:t },
+    { id:'sample-todo', displayId:3, title:'✅ Features Checklist',
+      content:'☑️ Unlimited scrollable canvas\n☑️ Minimize to title & restore back\n☑️ Transparency slider support\n☑️ Common font family selections\n🔲 Type [] to create checklist box\n🔲 Click on 🔲 to toggle it to ☑️\n🔲 Press Enter for next checklist item\n☑️ Auto-organize notes',
+      color:'green', customColor:null, opacity:0.92, group:'Personal', x:805, y:15, width:320, height:270,
+      zIndex:8, isPinned:false, isRolledUp:false, isLocked:true, isDeleted:false, tags:['Tasks','Checklist'],
+      fontFamily:'handwriting', fontSize:'base', createdAt:t, updatedAt:t },
+  ];
+}
+
+/* ---------------- Persistence ---------------- */
+function loadGroups(){
+  try{
+    const raw = localStorage.getItem(LS_GROUPS);
+    if(!raw){ const g=sampleGroups(); saveGroups(g); return g; }
+    const p = JSON.parse(raw);
+    return Array.isArray(p) && p.length ? p : sampleGroups();
+  }catch(e){ return sampleGroups(); }
+}
+function saveGroups(g){ try{ localStorage.setItem(LS_GROUPS, JSON.stringify(g)); }catch(e){ console.error(e); } }
+
+function loadNotes(){
+  try{
+    const raw = localStorage.getItem(LS_NOTES);
+    if(!raw){ const n=sampleNotes(); saveNotes(n); return n; }
+    const p = JSON.parse(raw);
+    if(!Array.isArray(p)) return sampleNotes();
+    return p.map(n=>({
+      ...n,
+      group: n.group || 'General',
+      opacity: typeof n.opacity==='number' ? n.opacity : 1,
+      fontFamily: n.fontFamily || 'sans',
+      fontSize: n.fontSize || 'base',
+      isRolledUp: !!n.isRolledUp,
+      tags: Array.isArray(n.tags) ? n.tags : [],
+    }));
+  }catch(e){ return sampleNotes(); }
+}
+function saveNotes(n){ try{ localStorage.setItem(LS_NOTES, JSON.stringify(n)); }catch(e){ console.error(e); } }
+
+function loadSettings(){
+  try{
+    const raw = localStorage.getItem(LS_SETTINGS);
+    if(!raw) return {...DEFAULT_SETTINGS};
+    return {...DEFAULT_SETTINGS, ...JSON.parse(raw)};
+  }catch(e){ return {...DEFAULT_SETTINGS}; }
+}
+function saveSettings(s){ try{ localStorage.setItem(LS_SETTINGS, JSON.stringify(s)); }catch(e){ console.error(e); } }
+
+function loadSyncInfo(){
+  try{ const raw=localStorage.getItem(LS_SYNC); return raw? JSON.parse(raw) : {status:'idle', lastSyncedAt:null, fileId:null}; }
+  catch(e){ return {status:'idle', lastSyncedAt:null, fileId:null}; }
+}
+function saveSyncInfo(s){ try{ localStorage.setItem(LS_SYNC, JSON.stringify(s)); }catch(e){} }
+
+/* ==================================================================
+   Markdown content engine
+   ------------------------------------------------------------------
+   Sticky content is stored as plain Markdown-ish text (same idea as
+   Windows 11 Notepad: **bold**, *italic*, __underline__, ~~strike~~,
+   "- "/"* " bullets, "1. " numbered lists, "[text](url)" links, and
+   🔲/☑️ checkbox lines). Editing happens in a real <textarea>, so the
+   browser's own cursor/selection/undo/paste/copy handling is used
+   as-is instead of fighting contentEditable Range APIs — that's what
+   was causing the repeated line-targeting and clipboard bugs.
+   ================================================================== */
+
+function mdBulletMatch(line){
+  const m = line.match(/^(\s*)([-*•])\s(.*)$/);
+  return m ? {indent:m[1], marker:m[2], rest:m[3], markerLen:m[1].length+m[2].length+1} : null;
+}
+function mdNumberMatch(line){
+  const m = line.match(/^(\s*)(\d+)\.\s(.*)$/);
+  return m ? {indent:m[1], num:m[2], rest:m[3], markerLen:m[1].length+m[2].length+2} : null;
+}
+function mdChkMatch(line){
+  // The editor keeps the visible checkbox as a normal text glyph so it
+  // round-trips cleanly through the system clipboard.  Also understand
+  // standard Markdown task-list spellings when they are pasted in.
+  let m = line.match(/^(\s*)(🔲|☑️|☑)\s?(.*)$/);
+  if(m) return {indent:m[1], checked:m[2]!=='🔲', rest:m[3], markerLen:m[0].length-m[3].length, glyph:m[2]};
+  m = line.match(/^(\s*)-\s*\[([ xX])\]\s?(.*)$/);
+  if(m) return {indent:m[1], checked:m[2].toLowerCase()==='x', rest:m[3], markerLen:m[0].length-m[3].length, glyph:m[2].toLowerCase()==='x'?'☑️':'🔲', task:true};
+  m = line.match(/^(\s*)\[([ xX])\]\s?(.*)$/);
+  if(m) return {indent:m[1], checked:m[2].toLowerCase()==='x', rest:m[3], markerLen:m[0].length-m[3].length, glyph:m[2].toLowerCase()==='x'?'☑️':'🔲', task:true};
+  return null;
+}
+function mdIsListLine(line){ return !!(mdBulletMatch(line) || mdNumberMatch(line) || mdChkMatch(line)); }
+function mdStripListPrefix(line){
+  const b = mdBulletMatch(line); if(b) return b.indent + b.rest;
+  const n = mdNumberMatch(line); if(n) return n.indent + n.rest;
+  const c = mdChkMatch(line); if(c) return c.indent + c.rest;
+  return line;
+}
+
+// Renders inline Markdown while keeping checkbox glyphs clickable wherever
+// they occur in the line.  A checkbox is deliberately treated as a literal
+// character, just like the Markdown formatting markers, so copying the note
+// remains ordinary text/Markdown rather than a hidden DOM representation.
+function renderInlineMd(text, searchQuery, baseOffset){
+  baseOffset = baseOffset || 0;
+  function fmtSegment(segment){
+    let s = escapeHtml(segment);
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    s = s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+    s = s.replace(/__(.+?)__/g, '<u>$1</u>');
+    s = s.replace(/~~(.+?)~~/g, '<s>$1</s>');
+    s = s.replace(/(^|[^*])\*([^*\n]+?)\*(?!\*)/g, '$1<i>$2</i>');
+    if(searchQuery && searchQuery.trim()){
+      const q = searchQuery.trim().replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      s = s.replace(new RegExp('('+q+')','ig'), '<mark class="hl">$1</mark>');
+    }
+    return s;
+  }
+  // Embedded checkbox-looking glyphs inside ordinary text are deliberately
+  // rendered as plain text. Only the first checkbox marker of a checklist line
+  // is interactive (rendered explicitly by renderMarkdownToHtml).
+  return fmtSegment(text);
+}
+
+// Render the stored Markdown-ish source into the formatted note view.
+// Every visual line/list item carries its source offset so a click in the
+// formatted view can put the textarea caret back on that exact line.  This
+// fixes the old "toolbar always edits the last line" behaviour without
+// changing the rest of the note UI.
+function renderMarkdownToHtml(md, searchQuery){
+  if(!md) return '<span class="md-empty">Click to start typing…</span>';
+  const lines = md.split('\n');
+  const lineOffsets = []; { let o=0; for(const l of lines){ lineOffsets.push(o); o += l.length+1; } }
+  let html = '', i = 0;
+  while(i < lines.length){
+    const line = lines[i];
+    const b = mdBulletMatch(line);
+    const n = !b ? mdNumberMatch(line) : null;
+    if(b || n){
+      const tag = b ? 'ul' : 'ol';
+      html += '<'+tag+' class="md-list">';
+      while(i < lines.length){
+        const match = b ? mdBulletMatch(lines[i]) : mdNumberMatch(lines[i]);
+        if(!match) break;
+        const base = lineOffsets[i] + match.markerLen;
+        html += '<li data-md-line="1" data-line-index="'+i+'" data-line-start="'+lineOffsets[i]+'" data-line-end="'+(lineOffsets[i]+lines[i].length)+'">'+renderInlineMd(match.rest, searchQuery, base)+'</li>';
+        i++;
+      }
+      html += '</'+tag+'>';
+      continue;
+    }
+    const c = mdChkMatch(line);
+    if(c){
+      const glyphOff = lineOffsets[i] + c.indent.length;
+      const restBase = lineOffsets[i] + c.markerLen;
+      html += '<div class="md-line md-check-line" data-md-line="1" data-line-index="'+i+'" data-line-start="'+lineOffsets[i]+'" data-line-end="'+(lineOffsets[i]+line.length)+'"><span class="chk" data-off="'+glyphOff+'" data-len="'+(c.glyph||'🔲').length+'" title="Click to toggle">'+(c.checked?'☑️':'🔲')+'</span> '+renderInlineMd(c.rest, searchQuery, restBase)+'</div>';
+      i++; continue;
+    }
+    if(line === ''){ html += '<div class="md-line" data-md-line="1" data-line-index="'+i+'" data-line-start="'+lineOffsets[i]+'" data-line-end="'+lineOffsets[i]+'">&nbsp;</div>'; i++; continue; }
+    html += '<div class="md-line" data-md-line="1" data-line-index="'+i+'" data-line-start="'+lineOffsets[i]+'" data-line-end="'+(lineOffsets[i]+line.length)+'">'+renderInlineMd(line, searchQuery, lineOffsets[i])+'</div>';
+    i++;
+  }
+  return html;
+}
+
+function mdToPlainText(md){
+  if(!md) return '';
+  return md.split('\n').map(line=>{
+    const b = mdBulletMatch(line); if(b) return '• '+b.rest;
+    const n = mdNumberMatch(line); if(n) return n.num+'. '+n.rest;
+    const c = mdChkMatch(line); if(c) return (c.checked?'☑️':'🔲')+' '+c.rest;
+    return line;
+  }).join('\n')
+    .replace(/\[([^\]]+)\]\((?:https?:\/\/|mailto:)[^\s)]+\)/g, '$1')
+    .replace(/\*\*(.+?)\*\*/g,'$1').replace(/__(.+?)__/g,'$1').replace(/~~(.+?)~~/g,'$1')
+    .replace(/(^|[^*])\*([^*\n]+?)\*(?!\*)/g,'$1$2');
+}
+
+function lineBoundsAt(text, pos){
+  const start = text.lastIndexOf('\n', pos-1)+1;
+  let end = text.indexOf('\n', pos);
+  if(end===-1) end = text.length;
+  return {start, end};
+}
+function selectedBlockBounds(ta){
+  const start = lineBoundsAt(ta.value, ta.selectionStart).start;
+  const endPos = Math.max(ta.selectionEnd, ta.selectionStart);
+  const endLine = lineBoundsAt(ta.value, endPos===start ? endPos : Math.max(endPos-1, start));
+  return { start, end: endLine.end };
+}
+
+
+// Apply/remove one Markdown line marker to the complete selected block.
+// Existing list markers are replaced in-place, so switching bullet -> number
+// or number -> checkbox never creates a phantom blank line.
+function toggleLineMarker(ta, testFn, makePrefix){
+  const val = ta.value;
+  const {start, end} = selectedBlockBounds(ta);
+  const block = val.slice(start, end);
+  const lines = block.split('\n');
+  const nonBlank = lines.filter(l=>l.trim()!=='');
+  const allHave = nonBlank.length>0 && nonBlank.every(testFn);
+  let counter = 1;
+  const finalLines = lines.map(l=>{
+    if(l.trim()==='') return l;
+    const stripped = mdIsListLine(l) ? mdStripListPrefix(l) : l;
+    if(allHave) return stripped;
+    return makePrefix(counter++) + stripped;
+  });
+  const newBlock = finalLines.join('\n');
+  ta.value = val.slice(0,start) + newBlock + val.slice(end);
+  ta.selectionStart = start; ta.selectionEnd = start + newBlock.length;
+  return newBlock;
+}
+function toggleBullets(ta){ toggleLineMarker(ta, l=>!!mdBulletMatch(l), ()=>'- '); }
+function toggleNumbers(ta){ toggleLineMarker(ta, l=>!!mdNumberMatch(l), n=>n+'. '); }
+function toggleChecklist(ta){ toggleLineMarker(ta, l=>!!mdChkMatch(l), ()=>'🔲 '); }
+
+function wrapSelectionMd(ta, marker){
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  const val = ta.value, sel = val.slice(s,e);
+  const mlen = marker.length;
+  if(val.slice(s-mlen, s) === marker && val.slice(e, e+mlen) === marker){
+    ta.value = val.slice(0, s-mlen) + sel + val.slice(e+mlen);
+    ta.selectionStart = s-mlen; ta.selectionEnd = e-mlen;
+    return;
+  }
+  if(sel.length>=mlen*2 && sel.startsWith(marker) && sel.endsWith(marker)){
+    const inner = sel.slice(mlen, sel.length-mlen);
+    ta.value = val.slice(0,s)+inner+val.slice(e);
+    ta.selectionStart = s; ta.selectionEnd = s+inner.length;
+    return;
+  }
+  ta.value = val.slice(0,s)+marker+sel+marker+val.slice(e);
+  ta.selectionStart = s+mlen; ta.selectionEnd = s+mlen+sel.length;
+}
+
+function clearFormattingMd(ta){
+  const {start, end} = selectedBlockBounds(ta);
+  const block = ta.value.slice(start, end);
+  const cleared = block.split('\n').map(l=>{
+    let out = mdIsListLine(l) ? mdStripListPrefix(l) : l;
+    out = out.replace(/\[([^\]]+)\]\((?:https?:\/\/|mailto:)[^\s)]+\)/g, '$1');
+    out = out.replace(/\*\*(.+?)\*\*/g,'$1').replace(/__(.+?)__/g,'$1').replace(/~~(.+?)~~/g,'$1');
+    out = out.replace(/(^|[^*])\*([^*\n]+?)\*(?!\*)/g,'$1$2');
+    return out;
+  }).join('\n');
+  ta.value = ta.value.slice(0,start) + cleared + ta.value.slice(end);
+  ta.selectionStart = start; ta.selectionEnd = start+cleared.length;
+}
+
+// Keep list behaviour deliberately small and predictable: native textarea
+// handles the actual insertion/deletion; we only add the list continuation
+// rules users expect from Notepad/Word.
+function handleMdListEnterBackspace(ta, e){
+  const val = ta.value, pos = ta.selectionStart;
+  if(ta.selectionStart !== ta.selectionEnd) return false;
+  const {start, end} = lineBoundsAt(val, pos);
+  const line = val.slice(start, end);
+  const b = mdBulletMatch(line), n = mdNumberMatch(line), c = mdChkMatch(line);
+  const marker = b || n || c;
+  if(!marker) return false;
+  const isAtLineEnd = pos === end;
+  const bodyEmpty = marker.rest === '';
+
+  if(e.key === 'Backspace' && bodyEmpty && pos === end){
+    e.preventDefault();
+    ta.value = val.slice(0,start) + val.slice(end);
+    ta.selectionStart = ta.selectionEnd = start;
+    return true;
+  }
+  if(e.key === 'Enter' && isAtLineEnd){
+    e.preventDefault();
+    if(bodyEmpty){
+      ta.value = val.slice(0,start) + val.slice(end);
+      ta.selectionStart = ta.selectionEnd = start;
+      return true;
+    }
+    const nextPrefix = b ? (b.marker==='*' ? '* ' : '- ') : c ? '🔲 ' : (parseInt(n.num,10)+1)+'. ';
+    const insert = '\n'+nextPrefix;
+    ta.value = val.slice(0,pos) + insert + val.slice(pos);
+    ta.selectionStart = ta.selectionEnd = pos + insert.length;
+    return true;
+  }
+  return false;
+}
+
+// Convert task-list spellings as they are typed/pasted. This is intentionally
+// line-aware: normal Markdown links such as [text](url) are never touched.
+// The trigger may occur anywhere in the line, as requested for checkbox glyphs.
+function mdAutoformatOnInput(ta){
+  if(ta.selectionStart !== ta.selectionEnd) return false;
+  const pos = ta.selectionStart;
+  const val = ta.value;
+  const before = val.slice(0, pos);
+  const match = before.match(/(?:^|\n)([^\n]*)$/);
+  const lineBefore = match ? match[1] : before;
+  let matchLen = 0, checked = false;
+  if(/\[[xX]\]$/.test(lineBefore)){ matchLen = 3; checked = true; }
+  else if(/\[ \]$/.test(lineBefore)){ matchLen = 3; checked = false; }
+  else if(/\[\]$/.test(lineBefore)){ matchLen = 2; checked = false; }
+  else return false;
+  const glyph = checked ? '☑️' : '🔲';
+  ta.value = val.slice(0, pos-matchLen) + glyph + val.slice(pos);
+  ta.selectionStart = ta.selectionEnd = pos-matchLen+glyph.length;
+  return true;
+}
+
+function insertLinkMd(ta, url, displayText){
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  const text = displayText || ta.value.slice(s,e) || 'link text';
+  const md = '['+text+']('+url+')';
+  ta.value = ta.value.slice(0,s) + md + ta.value.slice(e);
+  ta.selectionStart = ta.selectionEnd = s + md.length;
+}
+/* ---------------- Collision / non-overlap placement ---------------- */
+const DEFAULT_GAP = 16, SNAP_THRESHOLD = 20;
+function rectsOverlap(a,b,tol){
+  tol = tol||0;
+  return !(a.x+a.width<=b.x+tol || a.x>=b.x+b.width-tol || a.y+a.height<=b.y+tol || a.y>=b.y+b.height-tol);
+}
+function resolveNonOverlapPosition(target, allNotes, gap){
+  gap = gap || DEFAULT_GAP;
+  const obstacles = allNotes.filter(n=>n.id!==target.id && !n.isDeleted).map(n=>({
+    x:n.x, y:n.y, width:n.width, height:n.isRolledUp?40:n.height
+  }));
+  let cur = { x:Math.max(20,Math.round(target.x)), y:Math.max(20,Math.round(target.y)), width:target.width, height:target.height };
+  const overlapping = obstacles.filter(o=>rectsOverlap(cur,o));
+  if(overlapping.length===0){
+    let sx=cur.x, sy=cur.y;
+    for(const o of obstacles){
+      if(Math.abs(cur.x-(o.x+o.width+gap))<=SNAP_THRESHOLD) sx=o.x+o.width+gap;
+      else if(Math.abs(cur.x+cur.width+gap-o.x)<=SNAP_THRESHOLD) sx=o.x-cur.width-gap;
+      if(Math.abs(cur.y-o.y)<=SNAP_THRESHOLD) sy=o.y;
+      else if(Math.abs(cur.y-(o.y+o.height+gap))<=SNAP_THRESHOLD) sy=o.y+o.height+gap;
+    }
+    const test = { x:Math.max(20,sx), y:Math.max(20,sy), width:cur.width, height:cur.height };
+    if(!obstacles.some(o=>rectsOverlap(test,o))) return { x:test.x, y:test.y };
+    return { x:cur.x, y:cur.y };
+  }
+  const center = { x:cur.x+cur.width/2, y:cur.y+cur.height/2 };
+  const primary = overlapping.reduce((prev,curr)=>{
+    const pd = Math.hypot(prev.x+prev.width/2-center.x, prev.y+prev.height/2-center.y);
+    const cd = Math.hypot(curr.x+curr.width/2-center.x, curr.y+curr.height/2-center.y);
+    return cd<pd ? curr : prev;
+  });
+  let cands = [
+    { x:primary.x+primary.width+gap, y:primary.y },
+    { x:primary.x, y:primary.y+primary.height+gap },
+    { x:primary.x-cur.width-gap, y:primary.y },
+    { x:primary.x, y:primary.y-cur.height-gap },
+    { x:primary.x+primary.width+gap, y:primary.y+primary.height-cur.height },
+    { x:primary.x+primary.width-cur.width, y:primary.y+primary.height+gap },
+  ].filter(p=>p.x>=20 && p.y>=20);
+  cands.sort((a,b)=> Math.hypot(a.x-cur.x,a.y-cur.y) - Math.hypot(b.x-cur.x,b.y-cur.y));
+  for(const c of cands){
+    const test = { x:c.x, y:c.y, width:cur.width, height:cur.height };
+    if(!obstacles.some(o=>rectsOverlap(test,o))) return c;
+  }
+  let fx = primary.x+primary.width+gap, fy = primary.y;
+  while(obstacles.some(o=>rectsOverlap({x:fx,y:fy,width:cur.width,height:cur.height}, o))){
+    fx += 40;
+    if(fx > 3800){ fx = 20; fy += 60; }
+  }
+  return { x:Math.max(20,Math.round(fx)), y:Math.max(20,Math.round(fy)) };
+}
+
+/* ==================================================================
+   Application state
+   ================================================================== */
+const S = {
+  notes: loadNotes(),
+  groups: loadGroups(),
+  settings: loadSettings(),
+  sync: loadSyncInfo(),
+  viewMode: 'desktop',          // 'desktop' | 'grid'
+  searchQuery: '',
+  groupFilter: 'ALL',
+  zTop: 100,
+  gToken: null,                 // Google Identity token client
+};
+S.zTop = 0;
+S.zTopPinned = 0;
+// Migrate any pre-existing notes saved before displayId existed.
+let migratedDisplayId = S.notes.reduce((m,n)=>Math.max(m, Number(n.displayId)||0), 0);
+S.notes.forEach(n=>{ if(!n.displayId){ n.displayId = ++migratedDisplayId; } });
+function nextDisplayId(){
+  // Reuse an ID only after that ID has been permanently removed. Notes in Trash
+  // still retain their IDs, so restoring them can never collide with a new note.
+  const maxId = S.notes.reduce((m,n)=>Math.max(m, Number(n.displayId)||0), 0);
+  return maxId + 1;
+}
+
+const notesLayer = document.getElementById('notes-layer');
+const canvasEl = document.getElementById('canvas');
+const canvasWrap = document.getElementById('canvas-wrap');
+
+function persistNotes(){
+  saveNotes(S.notes);
+  updateTrashBadge();
+  refreshManagerIfOpen();
+}
+function refreshManagerIfOpen(){
+  const mgrPage = document.getElementById('manager-page');
+  if(mgrPage && !mgrPage.hidden && typeof renderManagerList === 'function'){
+    renderManagerList();
+  }
+}
+function updateTrashBadge(){
+  const badge = document.getElementById('trash-badge');
+  if(!badge) return;
+  const n = S.notes.filter(x=>x.isDeleted).length;
+  badge.textContent = n > 99 ? '99+' : String(n);
+  badge.hidden = n === 0;
+}
+function persistGroups(){ saveGroups(S.groups); }
+function persistSettings(){ saveSettings(S.settings); }
+
+function resizeCanvas(){
+  let maxX = S.settings.canvasWidth, maxY = S.settings.canvasHeight;
+  S.notes.forEach(n=>{ maxX=Math.max(maxX, n.x+n.width+300); maxY=Math.max(maxY, n.y+n.height+300); });
+  canvasEl.style.width = maxX+'px';
+  canvasEl.style.height = maxY+'px';
+  canvasEl.style.backgroundImage = S.settings.snapToGrid
+    ? `linear-gradient(#E2E8F0 1px, transparent 1px), linear-gradient(90deg, #E2E8F0 1px, transparent 1px)`
+    : '';
+  if(S.settings.snapToGrid){
+    canvasEl.style.backgroundSize = S.settings.gridSize+'px '+S.settings.gridSize+'px';
+  } else {
+    canvasEl.style.backgroundSize = '';
+  }
+}
+
+function matchesSearch(note, q){
+  if(!q) return true;
+  q = q.toLowerCase();
+  return (note.title||'').toLowerCase().includes(q)
+    || (note.content||'').toLowerCase().includes(q)
+    || (note.group||'').toLowerCase().includes(q)
+    || (note.tags||[]).some(t=>t.toLowerCase().includes(q));
+}
+function groupNameMatches(g,q){ return q && (g.name||'').toLowerCase().includes(q.toLowerCase()); }
+function isGroupHidden(groupName){
+  const g = S.groups.find(x=>x.name===groupName);
+  return !!(g && g.isHidden);
+}
+
+function visibleNotes(){
+  return S.notes.filter(n=>{
+    if(n.isDeleted) return false;
+    if(isGroupHidden(n.group)) return false;
+    if(S.groupFilter!=='ALL' && n.group!==S.groupFilter) return false;
+    if(S.searchQuery){
+      const q = S.searchQuery.toLowerCase();
+      const grp = S.groups.find(g=>g.name===n.group);
+      const noteMatch = matchesSearch(n,q);
+      const groupMatch = grp && groupNameMatches(grp,q);
+      if(!noteMatch && !groupMatch) return false;
+    }
+    return true;
+  });
+}
+
+function tierNotes(pinned){ return S.notes.filter(n=>!n.isDeleted && !!n.isPinned===!!pinned); }
+function normalizeAllLayers(){
+  // Keep actual CSS z-index values small and human-readable: 1..N.
+  // Unpinned notes occupy the lower layers; pinned notes occupy the upper
+  // layers, preserving the existing "pinned stays on top" behavior.
+  const unpinned=tierNotes(false).slice().sort((a,b)=>(a.zIndex||0)-(b.zIndex||0));
+  const pinned=tierNotes(true).slice().sort((a,b)=>(a.zIndex||0)-(b.zIndex||0));
+  let z=1;
+  unpinned.forEach(n=>{ n.zIndex=z++; });
+  pinned.forEach(n=>{ n.zIndex=z++; });
+  S.zTop=z-1;
+  S.zTopPinned=z-1;
+}
+function nextZ(pinned){
+  normalizeAllLayers();
+  const list=tierNotes(!!pinned);
+  // The next layer in either tier is simply the next available layer.
+  return S.zTop+1;
+}
+function bringNoteToFront(note, el, persist){
+  const pinned=!!note.isPinned;
+  normalizeAllLayers();
+  const list=tierNotes(pinned).slice().sort((a,b)=>(a.zIndex||0)-(b.zIndex||0));
+  const idx=list.findIndex(n=>n.id===note.id);
+  if(idx>=0){
+    const moved=list.splice(idx,1)[0];
+    list.push(moved);
+    let z=1;
+    const unpinned=pinned ? tierNotes(false).slice().sort((a,b)=>(a.zIndex||0)-(b.zIndex||0)) : list;
+    if(pinned){
+      unpinned.forEach(n=>{n.zIndex=z++;});
+      list.forEach(n=>{n.zIndex=z++;});
+    }else{
+      list.forEach(n=>{n.zIndex=z++;});
+      const pins=tierNotes(true).slice().sort((a,b)=>(a.zIndex||0)-(b.zIndex||0));
+      pins.forEach(n=>{n.zIndex=z++;});
+    }
+    S.zTop=z-1; S.zTopPinned=z-1;
+  }
+  if(el) el.style.zIndex=note.zIndex||1;
+  if(persist) persistNotes();
+}
+function moveNoteZ(note, action){
+  const pinned=!!note.isPinned;
+  normalizeAllLayers();
+  const list=tierNotes(pinned).slice().sort((a,b)=>(a.zIndex||0)-(b.zIndex||0));
+  const idx=list.findIndex(n=>n.id===note.id);
+  if(idx<0) return;
+  if(action==='up' && idx < list.length-1){
+    [list[idx].zIndex,list[idx+1].zIndex]=[list[idx+1].zIndex,list[idx].zIndex];
+  } else if(action==='down' && idx > 0){
+    [list[idx].zIndex,list[idx-1].zIndex]=[list[idx-1].zIndex,list[idx].zIndex];
+  } else if(action==='top'){
+    list.splice(idx,1); list.push(note);
+  } else if(action==='bottom'){
+    list.splice(idx,1); list.unshift(note);
+  }
+  // Rebuild compact global z-order while preserving the selected tier order.
+  const unpinned=pinned ? tierNotes(false).slice().sort((a,b)=>(a.zIndex||0)-(b.zIndex||0)) : list;
+  const pinnedList=pinned ? list : tierNotes(true).slice().sort((a,b)=>(a.zIndex||0)-(b.zIndex||0));
+  let z=1;
+  unpinned.forEach(n=>n.zIndex=z++);
+  pinnedList.forEach(n=>n.zIndex=z++);
+  S.zTop=z-1; S.zTopPinned=z-1;
+  note.updatedAt=nowIso();
+  persistNotes();
+  renderNotes();
+}
+
+/* ---------------- Color helpers ---------------- */
+function hexToRgb(hex){
+  hex = (hex||'#FEF9C3').replace('#','');
+  if(hex.length===3) hex = hex.split('').map(c=>c+c).join('');
+  const n = parseInt(hex,16);
+  return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
+}
+function rgba(hex, a){ const {r,g,b}=hexToRgb(hex); return `rgba(${r},${g},${b},${a})`; }
+function isDark(hex){ const {r,g,b}=hexToRgb(hex); return (0.299*r+0.587*g+0.114*b) < 140; }
+function shade(hex, amt){
+  const {r,g,b}=hexToRgb(hex);
+  const c = v => Math.max(0, Math.min(255, Math.round(v+amt)));
+  const toHex = n => n.toString(16).padStart(2,'0');
+  return '#'+toHex(c(r))+toHex(c(g))+toHex(c(b));
+}
+function noteTheme(note){
+  if(note.customColor){
+    const dark = isDark(note.customColor);
+    return {
+      bg: note.customColor, headerBg: shade(note.customColor,-18),
+      borderColor: shade(note.customColor,-40),
+      textColor: dark ? '#F8FAFC' : '#1E293B',
+      accentColor: dark ? '#CBD5E1' : '#475569',
+    };
+  }
+  return NOTE_COLORS[note.color] || NOTE_COLORS.yellow;
+}
+function applyNoteTheme(el, note){
+  const th = noteTheme(note);
+  const op = typeof note.opacity==='number' ? note.opacity : 1;
+  el.style.background = rgba(th.bg, op);
+  el.style.color = th.textColor;
+  el.style.borderColor = th.borderColor;
+  // Pinned notes used to get an extra 1.5px box-shadow ring in the same
+  // border color, stacked on top of the note's normal 1px CSS border. That
+  // doubled up the border and made pinned notes (like the default Welcome
+  // sticky) look thicker/darker than a freshly created sticky. Pinned and
+  // unpinned notes now share the same border treatment.
+  el.style.boxShadow = '0 4px 14px rgba(0,0,0,.16)';
+  const header = el.querySelector('.note-header');
+  if(header){ header.style.background = rgba(th.headerBg, Math.min(1, op+0.05)); header.style.color = th.textColor; }
+  const tb = el.querySelector('.note-toolbar'); if(tb) tb.style.borderTopColor = rgba(th.borderColor,0.5);
+  el.querySelectorAll('.note-body').forEach(b=>{ b.style.color = th.textColor; });
+  el.querySelectorAll('.hbtn,.nbtn').forEach(b=>b.style.color = th.textColor);
+}
+
+/* ---------------- Sticky info helpers ---------------- */
+function getStickyLayerInfo(note){
+  const pinned=!!note.isPinned;
+  const list=tierNotes(pinned).slice().sort((a,b)=>(a.zIndex||0)-(b.zIndex||0));
+  const idx=list.findIndex(n=>n.id===note.id);
+  const rank=idx>=0 ? idx+1 : 1; // 1 = bottom, higher = closer to top within the tier
+  return { rank, total:list.length, zIndex:note.zIndex||0 };
+}
+function getStickyColorInfo(note){
+  if(note.customColor){ return `Custom (${note.customColor.toUpperCase()})`; }
+  return (NOTE_COLORS[note.color] && NOTE_COLORS[note.color].name) || note.color || 'Unknown';
+}
+function getStickyInfoRows(note){
+  const layer=getStickyLayerInfo(note);
+  return [
+    ['ID', Number(note.displayId)||'—'],
+    ['Created', fmtFullDateTime(note.createdAt)],
+    ['Modified', fmtFullDateTime(note.updatedAt||note.createdAt)],
+    ['Group', note.group||'General'],
+    ['Position', `${Math.round(note.x||0)}, ${Math.round(note.y||0)} px`],
+    ['Size', `${Math.round(note.width||0)} × ${Math.round(note.height||0)} px`],
+    ['Layer', `${layer.rank} of ${layer.total} (bottom → top)`],
+    ['Color', getStickyColorInfo(note)],
+    ['Opacity', `${Math.round((typeof note.opacity==='number'?note.opacity:1)*100)}%`],
+    ['Locked', note.isLocked ? '🔒 Locked' : '🔓 Unlocked'],
+    ['Pinned', note.isPinned ? '📌 Pinned' : '📍 Not pinned']
+  ];
+}
+function refreshInfoTooltip(){
+  document.querySelectorAll('.note').forEach(el=>{
+    const id=el.id.replace(/^note-/,'');
+    const note=S.notes.find(n=>n.id===id);
+    const icon=el.querySelector('[data-act="date-icon"]');
+    if(!note || !icon) return;
+    const title=note.title||'Untitled';
+    const lines=getStickyInfoRows(note).map(([label,value])=>`${label}: ${value}`);
+    icon.title = `${title}\n${lines.join('\n')}`;
+    icon.setAttribute('aria-label',`Sticky information for ${title}`);
+  });
+}
+function closeStickyInfoMenu(){
+  document.querySelectorAll('.note-info-menu').forEach(x=>x.remove());
+}
+function showStickyInfoMenu(anchor, note){
+  closeStickyInfoMenu();
+  const menu=document.createElement('div');
+  menu.className='note-info-menu';
+  const rows=getStickyInfoRows(note);
+  menu.innerHTML=`
+    <div class="info-title">💡 ${escapeHtml(note.title||'Untitled')}</div>
+    ${rows.map(([label,value])=>`<div class="info-row"><span>${escapeHtml(label)}</span><span>${escapeHtml(String(value))}</span></div>`).join('')}`;
+  document.body.appendChild(menu);
+  const r=anchor.getBoundingClientRect();
+  const mw=menu.offsetWidth, mh=menu.offsetHeight;
+  menu.style.left=Math.max(8,Math.min(r.left,window.innerWidth-mw-8))+'px';
+  menu.style.top=Math.max(8,Math.min(r.bottom+5,window.innerHeight-mh-8))+'px';
+  menu.addEventListener('click',e=>e.stopPropagation());
+  const close=()=>{menu.remove();document.removeEventListener('pointerdown',close,true);};
+  setTimeout(()=>document.addEventListener('pointerdown',close,true),0);
+}
+
+/* ---------------- Generic pointer drag/resize helper ---------------- */
+function attachPointerDrag(handleEl, cbs){
+  handleEl.addEventListener('pointerdown', (e)=>{
+    if(cbs.shouldStart && !cbs.shouldStart(e)) return;
+    if(e.button !== undefined && e.button !== 0) return;
+    if(e.pointerType === 'touch' && e.isPrimary === false) return;
+    e.preventDefault();
+    try{ handleEl.setPointerCapture(e.pointerId); }catch(_){}
+    const startX = e.clientX, startY = e.clientY;
+    let moved = false;
+    if(cbs.onStart) cbs.onStart(e);
+    function onMove(ev){
+      const dx = ev.clientX-startX, dy = ev.clientY-startY;
+      if(Math.abs(dx)>5 || Math.abs(dy)>5) moved = true;
+      if(cbs.onMove) cbs.onMove(dx,dy,ev);
+    }
+    function onUp(ev){
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      document.removeEventListener('pointercancel', onUp);
+      try{ handleEl.releasePointerCapture(e.pointerId); }catch(_){}
+      if(cbs.onEnd) cbs.onEnd(moved, ev);
+    }
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+    document.addEventListener('pointercancel', onUp);
+  });
+}
+function snapVal(v){ return S.settings.snapToGrid ? Math.round(v/S.settings.gridSize)*S.settings.gridSize : v; }
+
+/* Temporary visual raise used only while a sticky is being edited.
+   This NEVER changes note.zIndex / Layer. */
+const EDITING_TEMP_Z = 7000000;
+function raiseNoteForEditing(el){
+  if(el) el.style.zIndex = String(EDITING_TEMP_Z);
+}
+function restoreNoteLayer(el, note){
+  if(el) el.style.zIndex = String(note.zIndex || 1);
+}
+
+/* ==================================================================
+   NOTE element
+   ================================================================== */
+const noteEls = {};
+
+function groupThemeFor(groupName){
+  const g = S.groups.find(x=>x.name===groupName);
+  return NOTE_COLORS[(g && g.color) || 'yellow'] || NOTE_COLORS.yellow;
+}
+function buildNoteEl(note){
+  const el = document.createElement('div');
+  el.className = 'note'+(note.isRolledUp?' rolled-up':'')+(note.isLocked?' locked':'');
+  el.id = 'note-'+note.id;
+  el.style.left = note.x+'px'; el.style.top = note.y+'px';
+  el.style.width = note.width+'px';
+  if(!note.isRolledUp) el.style.height = note.height+'px';
+  el.style.zIndex = note.zIndex||1;
+
+  const fam = FONT_FAMILIES[note.fontFamily]||FONT_FAMILIES.sans;
+  const fsize = FONT_SIZES[note.fontSize]||FONT_SIZES.base;
+
+  el.innerHTML = `
+    <div class="note-header">
+      <span class="grip">⠿</span>
+      <span class="group-chip" data-act="group-chip" title="Click to move to a different group" style="background:${rgba(groupThemeFor(note.group).bg,0.7)}; color:${groupThemeFor(note.group).textColor};">${escapeHtml(note.group || 'General')}</span>
+      <span class="title-label" data-act="title" title="Drag to move this sticky">${escapeHtml(note.title || 'Untitled')}</span>
+      <button class="hbtn settings-btn" data-act="settings" title="Sticky actions">⚙️</button>
+      <button class="hbtn" data-act="pin" title="${note.isPinned?'Pinned — always on top within the pinned stack. Click to unpin.':'Pin — keep above all unpinned stickies'}">${note.isPinned?'📌':'📍'}</button>
+      <button class="hbtn" data-act="lock" title="${note.isLocked?'Unlock sticky':'Lock sticky'}">${note.isLocked?'🔒':'🔓'}</button>
+      <button class="hbtn" data-act="rollup" title="Minimize">${note.isRolledUp?'▼':'▲'}</button>
+      <button class="hbtn date-icon" data-act="date-icon" title="Sticky information" aria-label="Sticky information">💡</button>
+      <button class="hbtn" data-act="close" title="Delete">❌</button>
+    </div>
+    <div class="note-toolbar">
+      <div class="tb-dropdown" style="position:relative;">
+        <button class="nbtn" data-act="color-toggle" title="Color & transparency">🎨</button>
+        <div class="swatch-menu" data-menu="swatch">
+          <div class="menu-label">Color</div>
+          <div class="swatch-grid" data-role="swatch-grid"></div>
+          <div class="custom-color-row">
+            <input type="color" data-act="custom-color" value="${note.customColor||'#F1EEC5'}">
+            <span style="font-size:11px;color:#64748B;">Custom color</span>
+          </div>
+          <div class="menu-label">Opacity</div>
+          <div class="opacity-row">
+            <span>🌫️</span>
+            <input type="range" min="0.3" max="1" step="0.05" data-act="opacity" value="${note.opacity}">
+            <span data-role="opacity-val">${Math.round(note.opacity*100)}%</span>
+          </div>
+        </div>
+      </div>
+      <div class="tb-dropdown" style="position:relative;">
+        <button class="nbtn" data-act="font-toggle" title="Font">🅣</button>
+        <div class="font-menu" data-menu="font">
+          <div class="menu-label">Font family</div>
+          <select data-act="font-family"></select>
+          <div class="menu-label">Font size</div>
+          <div class="font-size-row" data-role="font-size-row"></div>
+        </div>
+      </div>
+      <button class="nbtn" data-act="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+      <button class="nbtn" data-act="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+      <button class="nbtn" data-act="underline" title="Underline (Ctrl+U)"><u>U</u></button>
+      <button class="nbtn" data-act="strike" title="Strikethrough (Ctrl+Shift+X)"><s>S</s></button>
+      <button class="nbtn" data-act="bullets" title="Bullet list — type - or * then Space">• ≡</button>
+      <button class="nbtn" data-act="numbers" title="Numbered list — type 1. then Space">1. ≡</button>
+      <button class="nbtn" data-act="insert-checklist" title="Checklist — type [] / [ ] / [x]">☑️+</button>
+      <button class="nbtn" data-act="insert-link" title="Link (Ctrl+K)">🔗</button>
+      <button class="nbtn" data-act="clear-format" title="Clear formatting on selected lines (Ctrl+Space)">Ab̶</button>
+      <button class="nbtn" data-act="duplicate" title="Duplicate this sticky">📒</button>
+      <button class="nbtn" data-act="reset-theme" title="Reset to group theme">🌈</button>
+    </div>
+    <div class="note-body-wrap" style="position:relative; flex:1 1 auto; overflow:hidden;">
+      <div class="note-body" data-role="view" style="height:100%; overflow:auto; cursor:text; font-family:${fam.css}; font-size:${fsize};"></div>
+      <div class="note-body" data-role="edit" contenteditable="true" spellcheck="false" style="display:none; position:absolute; inset:0; font-family:${fam.css}; font-size:${fsize};"></div>
+    </div>
+    <div class="note-tags" data-role="tags"></div>
+    <div class="resize-e" title="Drag to resize width"></div>
+    <div class="resize-s" title="Drag to resize height"></div>
+    <div class="resize-handle"></div>
+  `;
+
+  // swatch grid
+  const grid = el.querySelector('[data-role="swatch-grid"]');
+  COLOR_ORDER.forEach(cid=>{
+    const sw = document.createElement('div');
+    sw.className = 'swatch'+((!note.customColor && note.color===cid)?' selected':'');
+    sw.style.background = NOTE_COLORS[cid].bg;
+    sw.style.borderColor = NOTE_COLORS[cid].borderColor;
+    sw.title = NOTE_COLORS[cid].name;
+    sw.addEventListener('click', (ev)=>{
+      if(note.isLocked){ ev.preventDefault(); ev.stopPropagation(); return; }
+      note.color = cid; note.customColor = null; note.updatedAt = nowIso();
+      applyNoteTheme(el, note); persistNotes();
+      grid.querySelectorAll('.swatch').forEach(s=>s.classList.remove('selected'));
+      sw.classList.add('selected');
+    });
+    grid.appendChild(sw);
+  });
+
+  // font family select
+  const famSel = el.querySelector('[data-act="font-family"]');
+  Object.values(FONT_FAMILIES).forEach(f=>{
+    const o = document.createElement('option'); o.value=f.id; o.textContent=f.name;
+    if(f.id===note.fontFamily) o.selected=true;
+    famSel.appendChild(o);
+  });
+  famSel.addEventListener('change', ()=>{
+    if(note.isLocked){ famSel.value=note.fontFamily; return; }
+    note.fontFamily = famSel.value; note.updatedAt=nowIso(); persistNotes();
+    const nf = FONT_FAMILIES[famSel.value];
+    el.querySelectorAll('.note-body').forEach(b=>b.style.fontFamily = nf.css);
+  });
+
+  // font size row
+  const sizeRow = el.querySelector('[data-role="font-size-row"]');
+  Object.keys(FONT_SIZES).forEach(sz=>{
+    const b = document.createElement('button');
+    b.textContent = sz; if(sz===note.fontSize) b.classList.add('selected');
+    b.addEventListener('click', (ev)=>{
+      if(note.isLocked){ ev.preventDefault(); ev.stopPropagation(); return; }
+      note.fontSize = sz; note.updatedAt=nowIso(); persistNotes();
+      el.querySelectorAll('.note-body').forEach(b=>b.style.fontSize = FONT_SIZES[sz]);
+      sizeRow.querySelectorAll('button').forEach(x=>x.classList.remove('selected'));
+      b.classList.add('selected');
+    });
+    sizeRow.appendChild(b);
+  });
+
+  // opacity + custom color
+  el.querySelector('[data-act="opacity"]').addEventListener('input', (e)=>{
+    if(note.isLocked){ e.target.value=note.opacity; return; }
+    note.opacity = parseFloat(e.target.value);
+    el.querySelector('[data-role="opacity-val"]').textContent = Math.round(note.opacity*100)+'%';
+    applyNoteTheme(el, note);
+  });
+  el.querySelector('[data-act="opacity"]').addEventListener('change', (e)=>{ if(note.isLocked){ e.target.value=note.opacity; return; } note.updatedAt=nowIso(); persistNotes(); });
+  el.querySelector('[data-act="custom-color"]').addEventListener('input', (e)=>{
+    if(note.isLocked){ e.target.value=note.customColor||'#F1EEC5'; return; }
+    note.customColor = e.target.value; note.updatedAt=nowIso();
+    applyNoteTheme(el, note); persistNotes();
+    grid.querySelectorAll('.swatch').forEach(s=>s.classList.remove('selected'));
+  });
+
+  // toggle popup menus (opaque, above everything, close on outside click)
+  el.querySelectorAll('[data-menu]').forEach(menu=>{
+    const toggleBtn = menu.previousElementSibling;
+    toggleBtn.addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      const wasOpen = menu.classList.contains('open');
+      closeAllNoteMenus();
+      if(!wasOpen){ menu.classList.add('open'); el.style.zIndex = MENU_OPEN_Z; }
+    });
+    menu.addEventListener('click', ev=>ev.stopPropagation());
+  });
+
+  // header buttons
+  el.querySelector('[data-act="settings"]').addEventListener('click', (e)=>{
+    if(note.isLocked){ e.preventDefault(); e.stopPropagation(); return; }
+    e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    showNoteContextMenu({clientX:r.left, clientY:r.bottom}, note);
+  });
+  el.querySelector('[data-act="settings"]').addEventListener('pointerdown', e=>e.stopPropagation());
+  ['pin','lock','rollup','close','settings','date-icon'].forEach(act=>{
+    const b=el.querySelector(`[data-act="${act}"]`);
+    if(b){ b.addEventListener('pointerdown', ev=>ev.stopPropagation()); b.addEventListener('pointermove', ev=>ev.stopPropagation()); }
+  });
+  el.querySelector('[data-act="pin"]').addEventListener('click', (e)=>{
+    if(note.isLocked){ e.preventDefault(); e.stopPropagation(); return; }
+    note.isPinned = !note.isPinned; note.updatedAt=nowIso();
+    normalizeAllLayers(); el.style.zIndex = note.zIndex||1;
+    persistNotes();
+    e.target.textContent = note.isPinned?'📌':'📍';
+    e.target.title = note.isPinned ? 'Pinned — always on top within the pinned stack. Click to unpin.' : 'Pin — keep above all unpinned stickies';
+    applyNoteTheme(el, note);
+    refreshInfoTooltip();
+  });
+  const lockBtn = el.querySelector('[data-act="lock"]');
+  let lockPointerHandledUntil = 0;
+  function toggleStickyLock(ev){
+    if(ev){ ev.preventDefault(); ev.stopPropagation(); }
+    note.isLocked = !note.isLocked;
+    note.updatedAt=nowIso();
+    persistNotes();
+    lockBtn.textContent = note.isLocked?'🔒':'🔓';
+    lockBtn.title = note.isLocked?'Unlock sticky':'Lock sticky';
+    el.classList.toggle('locked', note.isLocked);
+    refreshInfoTooltip();
+  }
+  lockBtn.addEventListener('pointerdown', e=>e.stopPropagation());
+  lockBtn.addEventListener('pointerup', e=>{
+    e.stopPropagation();
+    lockPointerHandledUntil=Date.now()+600;
+    toggleStickyLock(e);
+  });
+  lockBtn.addEventListener('click', e=>{
+    if(Date.now()<lockPointerHandledUntil){ e.stopPropagation(); return; }
+    toggleStickyLock(e);
+  });
+  el.querySelector('[data-act="rollup"]').addEventListener('click', (e)=>{
+    if(note.isLocked){ e.preventDefault(); e.stopPropagation(); return; }
+    note.isRolledUp = !note.isRolledUp; note.updatedAt=nowIso(); persistNotes();
+    el.classList.toggle('rolled-up', note.isRolledUp);
+    e.target.textContent = note.isRolledUp?'▼':'▲';
+    if(!note.isRolledUp) el.style.height = note.height+'px'; else el.style.height='';
+    resizeCanvas();
+    refreshInfoTooltip();
+  });
+  el.querySelector('[data-act="close"]').addEventListener('click', (e)=>{
+    if(note.isLocked){ e.preventDefault(); e.stopPropagation(); return; }
+    const doDelete = ()=>{
+      note.isDeleted = true; note.updatedAt = nowIso(); persistNotes();
+      renderNotes(); renderGroups(); toast('Note moved to Trash');
+    };
+    if(S.settings.confirmOnDelete) confirmDialog('Delete this sticky?', 'It will be moved to Trash, where you can restore it later.', doDelete);
+    else doDelete();
+  });
+  const infoBtn = el.querySelector('[data-act="date-icon"]');
+  infoBtn.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); showStickyInfoMenu(infoBtn, note); });
+  infoBtn.addEventListener('pointerdown', e=>e.stopPropagation());
+  infoBtn.addEventListener('pointerup', e=>e.stopPropagation());
+  infoBtn.addEventListener('mouseenter', ()=>{ infoBtn.title = getStickyInfoRows(note).map(([label,value])=>`${label}: ${value}`).join('\n'); });
+  el.querySelector('[data-act="group-chip"]').addEventListener('click', (ev)=>{
+    if(note.isLocked){ ev.preventDefault(); ev.stopPropagation(); return; }
+    ev.stopPropagation(); openGroupPicker(ev.currentTarget, note);
+  });
+
+  // Duplicate / reset-theme actions
+  const duplicateBtn = el.querySelector('[data-act="duplicate"]');
+  duplicateBtn.addEventListener('click', (e)=>{
+    e.preventDefault(); e.stopPropagation();
+    if(note.isLocked) return;
+    duplicateNote(note);
+  });
+  const resetThemeBtn = el.querySelector('[data-act="reset-theme"]');
+  resetThemeBtn.addEventListener('click', (e)=>{
+    e.preventDefault(); e.stopPropagation();
+    if(note.isLocked) return;
+    const group = S.groups.find(g=>g.name===note.group);
+    note.customColor = null;
+    if(group && NOTE_COLORS[group.color]) note.color = group.color;
+    note.updatedAt = nowIso();
+    applyNoteTheme(el, note);
+    grid.querySelectorAll('.swatch').forEach(sw=>sw.classList.remove('selected'));
+    const active = grid.querySelector('.swatch:nth-child(' + (Math.max(0, COLOR_ORDER.indexOf(note.color)) + 1) + ')');
+    if(active) active.classList.add('selected');
+    persistNotes();
+    refreshInfoTooltip();
+    toast('Sticky theme reset to group theme');
+  });
+
+  // ---- content: Markdown visual editor ----
+  // The stored value remains Markdown-ish text, but editing is visual so list
+  // markers are not exposed. List conversion operates on line metadata rather
+  // than browser execCommand, so checkbox lines never lose their text.
+  const viewDiv = el.querySelector('[data-role="view"]');
+  const editor = el.querySelector('[data-role="edit"]');
+
+  function inlineMdToEditorHtml(text){
+    let s = escapeHtml(text || '');
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/__(.+?)__/g, '<u>$1</u>');
+    s = s.replace(/~~(.+?)~~/g, '<s>$1</s>');
+    s = s.replace(/(^|[^*])\*([^*\n]+?)\*(?!\*)/g, '$1<em>$2</em>');
+    return s;
+  }
+  function htmlToMd(node){
+    if(!node) return '';
+    if(node.nodeType===Node.TEXT_NODE) return node.nodeValue || '';
+    if(node.nodeType!==Node.ELEMENT_NODE) return '';
+    const tag=node.tagName;
+    if(tag==='BR') return '\n';
+    if(tag==='A') return '['+Array.from(node.childNodes).map(htmlToMd).join('')+']('+(node.getAttribute('href')||'')+')';
+    const inner=Array.from(node.childNodes).map(htmlToMd).join('');
+    if(tag==='B'||tag==='STRONG') return '**'+inner+'**';
+    if(tag==='I'||tag==='EM') return '*'+inner+'*';
+    if(tag==='U') return '__'+inner+'__';
+    if(tag==='S'||tag==='STRIKE') return '~~'+inner+'~~';
+    if(tag==='DIV'||tag==='P') return inner+'\n';
+    return inner;
+  }
+  function lineBodyMd(line){
+    const body=line.querySelector('.edit-body');
+    return body ? htmlToMd(body).replace(/\n+$/,'') : '';
+  }
+  function makeEditLine(type, bodyMd, opts){
+    opts=opts||{};
+    const line=document.createElement('div');
+    line.className='md-edit-line'; line.dataset.mdLine='1'; line.dataset.type=type||'plain';
+    if(opts.num!=null) line.dataset.num=String(opts.num);
+    if(opts.checked) line.dataset.checked='1'; else line.dataset.checked='0';
+    const marker=document.createElement('span'); marker.className='edit-marker'; marker.setAttribute('contenteditable','false');
+    const body=document.createElement('span'); body.className='edit-body';
+    marker.textContent = type==='bullet' ? '•' : type==='number' ? ((opts.num||1)+'.') : type==='check' ? (opts.checked?'☑️':'🔲') : '';
+    body.innerHTML = inlineMdToEditorHtml(bodyMd||'');
+    line.appendChild(marker); line.appendChild(body);
+    return line;
+  }
+  function markdownLines(md){
+    return (md||'').split('\n').map(line=>{
+      const b=mdBulletMatch(line); if(b) return {type:'bullet', body:b.rest, indent:b.indent};
+      const n=mdNumberMatch(line); if(n) return {type:'number', body:n.rest, num:parseInt(n.num,10)||1, indent:n.indent};
+      const c=mdChkMatch(line); if(c) return {type:'check', body:c.rest, checked:c.checked, indent:c.indent};
+      return {type:'plain', body:line, indent:''};
+    });
+  }
+  function renderEditorFromMarkdown(md){
+    editor.innerHTML='';
+    const lines=markdownLines(md);
+    lines.forEach((x,idx)=>{
+      const line=makeEditLine(x.type,x.body,{num:x.num,checked:x.checked});
+      line.dataset.indent=x.indent||'';
+      line.dataset.lineIndex=String(idx);
+      editor.appendChild(line);
+    });
+    if(!editor.firstElementChild) editor.appendChild(makeEditLine('plain',''));
+  }
+  function updateEditMarker(line){
+    const marker=line.querySelector('.edit-marker');
+    if(!marker) return;
+    const type=line.dataset.type||'plain';
+    marker.textContent = type==='bullet' ? '•' : type==='number' ? ((parseInt(line.dataset.num||'1',10)||1)+'.') : type==='check' ? (line.dataset.checked==='1'?'☑️':'🔲') : '';
+  }
+  function serializeEditor(){
+    return Array.from(editor.querySelectorAll(':scope > .md-edit-line')).map(line=>{
+      const type=line.dataset.type||'plain';
+      const indent=line.dataset.indent||'';
+      const body=lineBodyMd(line);
+      if(type==='bullet') return indent+'- '+body;
+      if(type==='number') return indent+(parseInt(line.dataset.num||'1',10)||1)+'. '+body;
+      if(type==='check') return indent+(line.dataset.checked==='1'?'☑️':'🔲')+' '+body;
+      return body;
+    }).join('\n');
+  }
+  function saveContent(){
+    note.content=serializeEditor(); note.updatedAt=nowIso();
+    clearTimeout(saveTimer); saveTimer=setTimeout(()=>{ persistNotes(); refreshInfoTooltip(); },300);
+  }
+  function refreshView(){ viewDiv.innerHTML=renderMarkdownToHtml(note.content||'', S.searchQuery); }
+  let saveTimer=null;
+  renderEditorFromMarkdown(note.content||''); refreshView();
+
+  function placeCaretAtEnd(node){
+    const r=document.createRange(); r.selectNodeContents(node); r.collapse(false);
+    const sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+  }
+  function placeCaretAtStart(node){
+    const r=document.createRange(); r.selectNodeContents(node); r.collapse(true);
+    const sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+  }
+  function currentEditLine(){
+    const sel=window.getSelection(); if(!sel || !sel.rangeCount) return null;
+    let n=sel.anchorNode; if(n && n.nodeType===Node.TEXT_NODE) n=n.parentElement;
+    return n && n.closest ? n.closest('.md-edit-line') : null;
+  }
+  function selectedEditLines(){
+    const lines=Array.from(editor.querySelectorAll(':scope > .md-edit-line'));
+    const sel=window.getSelection();
+    if(!sel || !sel.rangeCount) return [];
+    const r=sel.getRangeAt(0);
+    if(r.collapsed){ const l=currentEditLine(); return l?[l]:[]; }
+    return lines.filter(l=>{ try{return r.intersectsNode(l);}catch(_){return false;} });
+  }
+  function enterEditMode(lineIndex){
+    if(note.isLocked) return;
+    viewDiv.style.display='none'; editor.style.display='block';
+    renderEditorFromMarkdown(note.content||'');
+    editor.focus();
+    let line=null;
+    if(Number.isInteger(lineIndex)) line=editor.querySelector('[data-md-line][data-line-index="'+lineIndex+'"]');
+    if(!line && Number.isInteger(lineIndex)) line=editor.children[lineIndex];
+    if(!line) line=editor.lastElementChild;
+    if(line) placeCaretAtEnd(line.querySelector('.edit-body'));
+    raiseNoteForEditing(el);
+  }
+  function exitEditMode(){
+    clearTimeout(saveTimer); note.content=serializeEditor(); note.updatedAt=nowIso(); persistNotes();
+    editor.style.display='none'; viewDiv.style.display='block'; refreshView(); restoreNoteLayer(el, note); refreshInfoTooltip();
+  }
+
+  viewDiv.addEventListener('click',(e)=>{
+    const chk=e.target.closest ? e.target.closest('.chk') : null;
+    if(chk){
+      const line=chk.closest('.md-check-line');
+      if(line){
+        const off=parseInt(chk.getAttribute('data-off')||'0',10), len=parseInt(chk.getAttribute('data-len')||'2',10);
+        const content=note.content||''; const current=content.slice(off,off+len);
+        const checked=current==='☑️'||current==='☑';
+        note.content=content.slice(0,off)+(checked?'🔲':'☑️')+content.slice(off+len);
+        note.updatedAt=nowIso(); persistNotes(); refreshView(); refreshInfoTooltip(); return;
+      }
+    }
+    if(e.target.closest('a')) return;
+    const lineEl=e.target.closest ? e.target.closest('[data-md-line]') : null;
+    enterEditMode(lineEl ? parseInt(lineEl.getAttribute('data-line-index')||'0',10) : undefined);
+  });
+
+  editor.addEventListener('blur', exitEditMode);
+  editor.addEventListener('focus', ()=>{ if(!note.isLocked) raiseNoteForEditing(el); });
+  function toggleEditCheckboxMarker(marker, ev){
+    const line=marker && marker.closest('.md-edit-line');
+    if(!line || line.dataset.type!=='check') return;
+    if(ev){ ev.preventDefault(); ev.stopPropagation(); }
+    line.dataset.checked=line.dataset.checked==='1'?'0':'1';
+    updateEditMarker(line); saveContent();
+  }
+  editor.addEventListener('click',(e)=>{
+    const marker=e.target.closest ? e.target.closest('.edit-marker') : null;
+    if(marker) toggleEditCheckboxMarker(marker,e);
+  });
+  editor.addEventListener('pointerup',(e)=>{
+    const marker=e.target.closest ? e.target.closest('.edit-marker') : null;
+    if(marker && e.pointerType==='touch') toggleEditCheckboxMarker(marker,e);
+  });
+  editor.addEventListener('mousedown',(e)=>{
+    const marker=e.target.closest ? e.target.closest('.edit-marker') : null;
+    if(marker) e.preventDefault();
+  });
+  editor.addEventListener('input',()=>{
+    // Ctrl+A/Delete can remove every line node in a contenteditable editor.
+    // Always keep one real editable line so the next toolbar operation has a
+    // concrete target and the caret never disappears.
+    if(!editor.querySelector(':scope > .md-edit-line')){
+      const fresh=makeEditLine('plain','');
+      editor.appendChild(fresh);
+      placeCaretAtStart(fresh.querySelector('.edit-body'));
+    }
+    const line=currentEditLine();
+    if(line && line.dataset.type==='plain'){
+      const body=line.querySelector('.edit-body');
+      const t=body?.textContent||'';
+      let type=null, num=null, checked=false, consumed=0;
+      if(/^[-*•] $/.test(t)){ type='bullet'; consumed=t.length; }
+      else if(/^\d+\. $/.test(t)){ type='number'; num=parseInt(t,10)||1; consumed=t.length; }
+      else if(/^\[\s?\]$/.test(t)){ type='check'; checked=false; consumed=t.length; }
+      else if(/^\[[xX]\]$/.test(t)){ type='check'; checked=true; consumed=t.length; }
+      if(type){
+        line.dataset.type=type; line.dataset.checked=checked?'1':'0';
+        if(type==='number') line.dataset.num=String(num||1); else delete line.dataset.num;
+        line.dataset.indent='';
+        body.innerHTML=''; updateEditMarker(line); placeCaretAtStart(body);
+      }
+    }
+    saveContent();
+  });
+
+  function splitCurrentLine(e){
+    const line=currentEditLine(); if(!line) return false;
+    const body=line.querySelector('.edit-body'); if(!body) return false;
+    const sel=window.getSelection(); if(!sel || !sel.rangeCount || !sel.isCollapsed) return false;
+    const r=sel.getRangeAt(0); if(!body.contains(r.startContainer)) return false;
+    const before=r.cloneRange(); before.selectNodeContents(body); before.setEnd(r.startContainer,r.startOffset);
+    const after=r.cloneRange(); after.selectNodeContents(body); after.setStart(r.startContainer,r.startOffset);
+    const b=document.createElement('div'); b.appendChild(before.cloneContents());
+    const a=document.createElement('div'); a.appendChild(after.cloneContents());
+    const oldType=line.dataset.type||'plain';
+    const beforeText=b.textContent||'', afterText=a.textContent||'';
+    if(e.key!=='Enter') return false;
+    e.preventDefault();
+
+    // Enter on an empty list item exits the list, leaving one ordinary blank line.
+    if(oldType!=='plain' && !beforeText.trim() && !afterText.trim()){
+      line.dataset.type='plain'; line.dataset.checked='0'; delete line.dataset.num; delete line.dataset.indent;
+      body.innerHTML=''; updateEditMarker(line); placeCaretAtStart(body); saveContent(); return true;
+    }
+
+    body.innerHTML=b.innerHTML;
+    let nextType=oldType;
+    let nextNum=oldType==='number' ? ((parseInt(line.dataset.num||'1',10)||1)+1) : 1;
+    const next=makeEditLine(nextType,'',{num:nextNum,checked:false});
+    next.dataset.indent=line.dataset.indent||'';
+    next.dataset.checked=oldType==='check'?'0':'0';
+    next.querySelector('.edit-body').innerHTML=a.innerHTML;
+    line.parentNode.insertBefore(next,line.nextSibling);
+    updateEditMarker(line); updateEditMarker(next);
+    placeCaretAtStart(next.querySelector('.edit-body')); saveContent(); return true;
+  }
+
+  editor.addEventListener('paste',(e)=>{
+    const text=(e.clipboardData||window.clipboardData)?.getData('text/plain')||'';
+    if(!text || (!text.includes('\n') && !/^(?:\s*)(?:[-*] |\d+\. |\[ ?[xX]?\]|🔲|☑️)/.test(text))) return;
+    e.preventDefault();
+    const line=currentEditLine();
+    if(!line){ document.execCommand('insertText',false,text); saveContent(); return; }
+    const body=line.querySelector('.edit-body');
+    const sel=window.getSelection();
+    if(!body || !sel || !sel.rangeCount){ return; }
+    const r=sel.getRangeAt(0);
+    const before=r.cloneRange(); before.selectNodeContents(body); before.setEnd(r.startContainer,r.startOffset);
+    const after=r.cloneRange(); after.selectNodeContents(body); after.setStart(r.startContainer,r.startOffset);
+    const left=document.createElement('div'); left.appendChild(before.cloneContents());
+    const right=document.createElement('div'); right.appendChild(after.cloneContents());
+    body.innerHTML=left.innerHTML;
+    const parts=text.replace(/\r\n?/g,'\n').split('\n');
+    const parsed=parts.map(x=>{const b=mdBulletMatch(x);if(b)return {type:'bullet',body:b.rest,indent:b.indent};const n=mdNumberMatch(x);if(n)return {type:'number',body:n.rest,num:parseInt(n.num,10)||1,indent:n.indent};const c=mdChkMatch(x);if(c)return {type:'check',body:c.rest,checked:c.checked,indent:c.indent};return {type:'plain',body:x,indent:''};});
+    let cursorLine=line;
+    parsed.forEach((x,i)=>{
+      const nl=i===0?cursorLine:makeEditLine(x.type,x.body,{num:x.num,checked:x.checked});
+      if(i===0){
+        if(x.type!=='plain' || x.body!==''){ cursorLine.dataset.type=x.type; cursorLine.dataset.checked=x.checked?'1':'0'; if(x.num) cursorLine.dataset.num=String(x.num); cursorLine.dataset.indent=x.indent||''; cursorLine.querySelector('.edit-body').innerHTML=inlineMdToEditorHtml(x.body); updateEditMarker(cursorLine); }
+      } else { nl.dataset.indent=x.indent||''; cursorLine.parentNode.insertBefore(nl,cursorLine.nextSibling); cursorLine=nl; updateEditMarker(nl); }
+    });
+    if(parts.length){ const last=editor.querySelectorAll('.md-edit-line')[Array.from(editor.children).indexOf(cursorLine)]; placeCaretAtEnd(last.querySelector('.edit-body')); }
+    saveContent();
+  });
+
+  editor.addEventListener('keydown',(e)=>{
+    const mod=e.ctrlKey||e.metaKey;
+    if(mod && !e.shiftKey && e.key.toLowerCase()==='b'){e.preventDefault();document.execCommand('bold');saveContent();return;}
+    if(mod && !e.shiftKey && e.key.toLowerCase()==='i'){e.preventDefault();document.execCommand('italic');saveContent();return;}
+    if(mod && !e.shiftKey && e.key.toLowerCase()==='u'){e.preventDefault();document.execCommand('underline');saveContent();return;}
+    if(mod && e.shiftKey && e.key.toLowerCase()==='x'){e.preventDefault();document.execCommand('strikeThrough');saveContent();return;}
+    if(mod && !e.shiftKey && e.key.toLowerCase()==='k'){e.preventDefault();openLinkPrompt();return;}
+    if(mod && e.key===' '){e.preventDefault();document.execCommand('removeFormat');toggleEditorLists('plain');saveContent();return;}
+    if(e.key==='Escape'){editor.blur();return;}
+    if(e.key==='Enter' && splitCurrentLine(e)) return;
+    if(e.key==='Backspace'){
+      const line=currentEditLine();
+      if(line){
+        const body=line.querySelector('.edit-body'); const sel=window.getSelection();
+        if(sel && sel.rangeCount && sel.isCollapsed && body){
+          const r=sel.getRangeAt(0);
+          const pre=r.cloneRange(); pre.selectNodeContents(body); pre.setEnd(r.startContainer,r.startOffset);
+          const atStart=!pre.toString();
+          if(atStart){
+            const type=line.dataset.type||'plain';
+            if(type!=='plain'){
+              e.preventDefault();
+              line.dataset.type='plain'; line.dataset.checked='0'; delete line.dataset.num; delete line.dataset.indent;
+              updateEditMarker(line); saveContent(); return;
+            }
+            const prev=line.previousElementSibling;
+            if(prev && prev.classList.contains('md-edit-line')){
+              e.preventDefault();
+              const prevBody=prev.querySelector('.edit-body');
+              const currentMd=lineBodyMd(line);
+              const prevMd=lineBodyMd(prev);
+              prev.dataset.type = prev.dataset.type || 'plain';
+              if(currentMd){
+                if(prevMd) prevBody.appendChild(document.createTextNode(' '));
+                prevBody.insertAdjacentHTML('beforeend', inlineMdToEditorHtml(currentMd));
+              }
+              line.remove();
+              placeCaretAtEnd(prevBody); saveContent(); return;
+            }
+          }
+        }
+      }
+    }
+  });
+
+  function toggleEditorLists(type){
+    let lines=selectedEditLines();
+    if(!lines.length){
+      const cur=currentEditLine();
+      if(cur) lines=[cur];
+    }
+    if(!lines.length) return;
+
+    // Never let toolbar selection collapse to the last line.  Work on the exact
+    // line set that was selected, including empty lines.
+    const allSame = lines.every(l=>(l.dataset.type||'plain')===type);
+    if(type==='plain' || allSame){
+      lines.forEach(l=>{
+        l.dataset.type='plain'; l.dataset.checked='0'; delete l.dataset.num; delete l.dataset.indent;
+        updateEditMarker(l);
+      });
+      saveContent();
+      return;
+    }
+
+    let num=1;
+    // Preserve an existing numbering start when converting a numbered block;
+    // otherwise number the selected block from 1.
+    const firstNum=parseInt(lines[0].dataset.num||'',10);
+    if(type==='number' && Number.isFinite(firstNum) && firstNum>0 && (lines[0].dataset.type||'plain')==='number') num=firstNum;
+    lines.forEach(l=>{
+      const body=lineBodyMd(l);
+      l.dataset.type=type;
+      l.dataset.checked=type==='check' && l.dataset.checked==='1' ? '1' : '0';
+      if(type==='number') l.dataset.num=String(num++); else delete l.dataset.num;
+      // A list marker is allowed on an empty line.  This is important after
+      // Ctrl+A/Delete and when pressing a list toolbar button on a fresh line.
+      updateEditMarker(l);
+      if(!body && type==='plain') l.dataset.type='plain';
+    });
+    saveContent();
+  }
+
+  function openLinkPrompt(){
+    const sel=window.getSelection(); const text=sel && sel.rangeCount ? sel.toString() : '';
+    const saved=sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+    customLinkPrompt(text).then(result=>{
+      if(!result) { editor.focus(); return; }
+      editor.focus();
+      if(saved){ const ss=window.getSelection(); ss.removeAllRanges(); ss.addRange(saved); }
+      if(text) document.execCommand('createLink',false,result.url);
+      else document.execCommand('insertHTML',false,'<a href="'+escapeHtml(result.url)+'" target="_blank" rel="noopener">'+escapeHtml(result.text||'link text')+'</a>');
+      saveContent();
+    });
+  }
+
+  function toolbarAction(fn){
+    return (btn)=>{
+      btn.addEventListener('pointerdown',e=>{ e.preventDefault(); e.stopPropagation(); });
+      btn.addEventListener('click',(ev)=>{
+        if(note.isLocked){ ev.preventDefault(); ev.stopPropagation(); return; }
+        if(editor.style.display==='none') enterEditMode();
+        fn();
+        editor.focus();
+        saveContent();
+      });
+    };
+  }
+  toolbarAction(()=>{ if(note.isLocked) return; document.execCommand('bold'); })(el.querySelector('[data-act="bold"]'));
+  toolbarAction(()=>document.execCommand('italic'))(el.querySelector('[data-act="italic"]'));
+  toolbarAction(()=>document.execCommand('underline'))(el.querySelector('[data-act="underline"]'));
+  toolbarAction(()=>document.execCommand('strikeThrough'))(el.querySelector('[data-act="strike"]'));
+  toolbarAction(()=>toggleEditorLists('bullet'))(el.querySelector('[data-act="bullets"]'));
+  toolbarAction(()=>toggleEditorLists('number'))(el.querySelector('[data-act="numbers"]'));
+  toolbarAction(()=>toggleEditorLists('check'))(el.querySelector('[data-act="insert-checklist"]'));
+  toolbarAction(()=>{document.execCommand('removeFormat'); toggleEditorLists('plain');})(el.querySelector('[data-act="clear-format"]'));
+  el.querySelector('[data-act="insert-link"]').addEventListener('mousedown',e=>e.preventDefault());
+  el.querySelector('[data-act="insert-link"]').addEventListener('click',()=>{if(editor.style.display==='none') enterEditMode(); else editor.focus(); openLinkPrompt();});
+
+  // tags
+  renderTags(el, note);
+
+
+  // Bring-to-front on ANY interaction with the note, including header
+  // buttons (Change Group / Pin / Lock / Minimize / Close). Previously only
+  // dragging the header background (not the buttons themselves) raised the
+  // note's z-index, via attachPointerDrag's onStart below — but that only
+  // fires for drags, and shouldStart explicitly excludes clicks on buttons.
+  // So a note whose header buttons happened to sit under another note in
+  // the SAME tier (unpinned-under-unpinned) had no way to hop back to front
+  // by clicking those buttons. This restores that for same-tier notes.
+  // Pinned notes intentionally still render above every unpinned note
+  // regardless (that's what "pinned" means) — unpin or drag it aside if a
+  // pinned sticky is fully covering something you need to click underneath.
+  el.addEventListener('pointerdown', (ev)=>{
+    if(note.isLocked) return;
+    if(ev.target.closest && ev.target.closest('button,input,select,.resize-handle,.resize-e,.resize-s,.note-toolbar')) return;
+    // Do not change the stored Layer merely because the sticky was touched.
+    // Editing gets a temporary visual raise in enterEditMode().
+  }, true);
+
+  // A locked sticky is modification-protected. The lock and info controls are
+  // intentionally still usable; all other controls/actions are blocked.
+  el.addEventListener('click', (ev)=>{
+    if(!note.isLocked) return;
+    const allowed = ev.target.closest && (ev.target.closest('[data-act=\"lock\"]') || ev.target.closest('[data-act=\"date-icon\"]'));
+    if(allowed) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+  }, true);
+
+  // dragging via header (but not on inputs/buttons)
+  const header = el.querySelector('.note-header');
+  header.addEventListener('contextmenu', e=>e.preventDefault());
+  attachPointerDrag(header, {
+    shouldStart: (e)=> !note.isLocked && !e.target.closest('button,[data-act="group-chip"],[data-act="date-icon"]'),
+    onStart: ()=>{ el.classList.add('dragging'); },
+    onMove: (dx,dy)=>{
+      const nx = Math.max(0, snapVal(note.x+dx)), ny = Math.max(0, snapVal(note.y+dy));
+      el.style.left = nx+'px'; el.style.top = ny+'px';
+    },
+    onEnd: (moved)=>{
+      el.classList.remove('dragging');
+      if(!moved){ persistNotes(); return; }
+      let nx = parseInt(el.style.left), ny = parseInt(el.style.top);
+      if(S.settings.dragBehavior==='auto-adjust'){
+        const pos = resolveNonOverlapPosition({id:note.id,x:nx,y:ny,width:note.width,height:note.isRolledUp?40:note.height}, S.notes);
+        nx = pos.x; ny = pos.y;
+        el.style.left = nx+'px'; el.style.top = ny+'px';
+      }
+      note.x = nx; note.y = ny; note.updatedAt = nowIso(); persistNotes(); resizeCanvas();
+      refreshInfoTooltip();
+    }
+  });
+
+  // resizing
+  const handle = el.querySelector('.resize-handle');
+  attachPointerDrag(handle, {
+    shouldStart: ()=>!note.isLocked,
+    onStart: ()=>{ el.classList.add('resizing'); },
+    onMove: (dx,dy)=>{
+      const w = Math.max(180, snapVal(note.width+dx));
+      const h = Math.max(120, snapVal(note.height+dy));
+      el.style.width = w+'px'; el.style.height = h+'px';
+    },
+    onEnd: ()=>{
+      el.classList.remove('resizing');
+      note.width = parseInt(el.style.width); note.height = parseInt(el.style.height);
+      note.updatedAt = nowIso(); persistNotes(); resizeCanvas();
+      refreshInfoTooltip();
+    }
+  });
+  const handleE = el.querySelector('.resize-e');
+  attachPointerDrag(handleE, {
+    shouldStart: ()=>!note.isLocked,
+    onStart: ()=>{ el.classList.add('resizing'); },
+    onMove: (dx)=>{ const w = Math.max(180, snapVal(note.width+dx)); el.style.width = w+'px'; },
+    onEnd: ()=>{
+      el.classList.remove('resizing');
+      note.width = parseInt(el.style.width);
+      note.updatedAt = nowIso(); persistNotes(); resizeCanvas();
+      refreshInfoTooltip();
+    }
+  });
+  const handleS = el.querySelector('.resize-s');
+  attachPointerDrag(handleS, {
+    shouldStart: ()=>!note.isLocked,
+    onStart: ()=>{ el.classList.add('resizing'); },
+    onMove: (dx,dy)=>{ const h = Math.max(120, snapVal(note.height+dy)); el.style.height = h+'px'; },
+    onEnd: ()=>{
+      el.classList.remove('resizing');
+      note.height = parseInt(el.style.height);
+      note.updatedAt = nowIso(); persistNotes(); resizeCanvas();
+      refreshInfoTooltip();
+    }
+  });
+
+
+  applyNoteTheme(el, note);
+  noteEls[note.id] = el;
+  return el;
+}
+let activeStickyContextMenu = null;
+function showNoteContextMenu(e, note){
+  if(activeStickyContextMenu && activeStickyContextMenu.menu && document.body.contains(activeStickyContextMenu.menu)){
+    if(activeStickyContextMenu.noteId === note.id){ activeStickyContextMenu.menu.remove(); activeStickyContextMenu = null; return; }
+    activeStickyContextMenu.menu.remove(); activeStickyContextMenu = null;
+  }
+  document.querySelectorAll('.floating-menu').forEach(m=>m.remove());
+  closeAllNoteMenus();
+  const menu = document.createElement('div');
+  menu.className = 'tb-menu open floating-menu';
+  menu.style.position = 'fixed';
+  menu.style.left = Math.min(e.clientX, window.innerWidth-200)+'px';
+  menu.style.top = Math.min(e.clientY, window.innerHeight-180)+'px';
+  menu.style.zIndex = '9000000';
+  menu.innerHTML = `
+    <div class="tb-menu-item" data-act="rename">✏️ Rename</div>
+    <div class="tb-menu-divider"></div>
+    <div class="tb-menu-item" data-z="top">⏫ Up to top</div>
+    <div class="tb-menu-item" data-z="up">⬆️ Up 1 level</div>
+    <div class="tb-menu-item" data-z="down">⬇️ Down 1 level</div>
+    <div class="tb-menu-item" data-z="bottom">⏬ Down to bottom</div>
+    <div class="tb-menu-divider"></div>
+    <div class="tb-menu-item" data-act="save-rtf">📄 Save as Rich Text (.rtf)</div>
+  `;
+  document.body.appendChild(menu);
+  activeStickyContextMenu = {menu, noteId:note.id};
+  menu.addEventListener('click', ev=>ev.stopPropagation());
+  const renameItem = menu.querySelector('[data-act="rename"]');
+  if(renameItem) renameItem.addEventListener('click', async ()=>{
+    menu.remove(); if(activeStickyContextMenu?.menu===menu) activeStickyContextMenu=null;
+    const val = await customPrompt('Rename Sticky', note.title || '');
+    if(val !== null && val.trim()){ note.title=val.trim(); note.updatedAt=nowIso(); persistNotes(); const t=noteEls[note.id]?.querySelector('[data-act="title"]'); if(t){t.textContent=note.title;t.title='Drag to move this sticky';} }
+  });
+  menu.querySelectorAll('[data-z]').forEach(item=>{
+    item.addEventListener('click', ()=>{
+      moveNoteZ(note, item.getAttribute('data-z'));
+      menu.remove(); if(activeStickyContextMenu?.menu===menu) activeStickyContextMenu=null;
+    });
+  });
+  const rtfItem = menu.querySelector('[data-act="save-rtf"]');
+  if(rtfItem) rtfItem.addEventListener('click', ()=>{ downloadNoteAsRtf(note); menu.remove(); if(activeStickyContextMenu?.menu===menu) activeStickyContextMenu=null; });
+  setTimeout(()=>{ const h=(ev)=>{ if(menu.contains(ev.target)) return; menu.remove(); if(activeStickyContextMenu?.menu===menu) activeStickyContextMenu=null; document.removeEventListener('click',h); }; document.addEventListener('click',h); }, 0);
+}
+
+/* ---------------- Save as Rich Text (.rtf) — preserves bold/italic/underline/
+   strikethrough plus bullets, numbering and checkbox glyphs, openable in
+   Word, WordPad, and most rich text editors. ---------------- */
+function escapeRtf(text){
+  let out = '';
+  for(const ch of text){
+    const code = ch.codePointAt(0);
+    if(ch === '\\' || ch === '{' || ch === '}') out += '\\'+ch;
+    else if(code > 126) out += '\\u'+code+'?';
+    else out += ch;
+  }
+  return out;
+}
+function rtfWalkInline(node, out){
+  if(node.nodeType === Node.TEXT_NODE){ out.push(escapeRtf(node.textContent)); return; }
+  if(node.nodeType !== Node.ELEMENT_NODE) return;
+  const tag = node.tagName;
+  if(tag === 'BR'){ out.push('\\line '); return; }
+  if(node.classList && node.classList.contains('chk')){ out.push(escapeRtf(node.textContent)); return; }
+  let open = '', close = '';
+  if(tag==='B'||tag==='STRONG'){ open='{\\b '; close='}'; }
+  else if(tag==='I'||tag==='EM'){ open='{\\i '; close='}'; }
+  else if(tag==='U'){ open='{\\ul '; close='}'; }
+  else if(tag==='S'||tag==='STRIKE'){ open='{\\strike '; close='}'; }
+  out.push(open);
+  Array.from(node.childNodes).forEach(c=>rtfWalkInline(c, out));
+  out.push(close);
+}
+function rtfWalkBlock(node, out){
+  if(node.nodeType === Node.TEXT_NODE){ rtfWalkInline(node, out); return; }
+  if(node.nodeType !== Node.ELEMENT_NODE) return;
+  const tag = node.tagName;
+  if(tag === 'UL' || tag === 'OL'){
+    let n = 1;
+    Array.from(node.children).forEach(li=>{
+      if(li.tagName !== 'LI') return;
+      out.push(tag==='OL' ? (n+++'.\\tab ') : '\\bullet \\tab ');
+      Array.from(li.childNodes).forEach(c=>rtfWalkInline(c, out));
+      out.push('\\par ');
+    });
+    return;
+  }
+  if(tag === 'BR'){ out.push('\\line '); return; }
+  rtfWalkInline(node, out);
+}
+function noteContentToRtfBody(html){
+  const container = document.createElement('div');
+  container.innerHTML = html || '';
+  const out = [];
+  Array.from(container.childNodes).forEach(n=>rtfWalkBlock(n, out));
+  return out.join('');
+}
+function downloadNoteAsRtf(note){
+  const body = noteContentToRtfBody(note.content);
+  const rtf = `{\\rtf1\\ansi\\ansicpg1252\\deff0{\\fonttbl{\\f0\\fswiss\\fcharset0 Calibri;}}`+
+    `\\viewkind4\\uc1\\pard\\f0\\fs28\\b ${escapeRtf(note.title||'Untitled')}\\b0\\fs24\\par\\par `+
+    `${body}\\par}`;
+  const blob = new Blob([rtf], {type:'application/rtf'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (note.title||'sticky').replace(/[^\w\- ]+/g,'_').slice(0,60) + '.rtf';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+  toast('Saved as Rich Text (.rtf)');
+}
+
+function startInlineTagEdit(span, el, note, idx){
+  const input = document.createElement('input');
+  input.type = 'text'; input.value = note.tags[idx]; input.className = 'tag-input';
+  span.replaceWith(input);
+  input.focus(); input.select();
+  let done = false;
+  function commit(){
+    if(done) return; done = true;
+    const clean = input.value.trim().replace(/^#/,'');
+    if(clean) note.tags[idx] = clean;
+    note.updatedAt = nowIso(); persistNotes(); renderTags(el, note);
+  }
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e)=>{
+    e.stopPropagation();
+    if(e.key==='Enter'){ e.preventDefault(); input.blur(); }
+    else if(e.key==='Escape'){ done = true; renderTags(el, note); }
+  });
+  input.addEventListener('click', e=>e.stopPropagation());
+}
+function startInlineTagAdd(addBtn, el, note){
+  const input = document.createElement('input');
+  input.type = 'text'; input.placeholder = 'Tag name'; input.className = 'tag-input';
+  addBtn.replaceWith(input);
+  input.focus();
+  let done = false;
+  function commit(){
+    if(done) return; done = true;
+    const clean = input.value.trim().replace(/^#/,'');
+    if(clean){
+      note.tags = note.tags || [];
+      if(!note.tags.includes(clean)) note.tags.push(clean);
+      note.updatedAt = nowIso(); persistNotes();
+    }
+    renderTags(el, note);
+  }
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e)=>{
+    e.stopPropagation();
+    if(e.key==='Enter'){ e.preventDefault(); input.blur(); }
+    else if(e.key==='Escape'){ done = true; renderTags(el, note); }
+  });
+  input.addEventListener('click', e=>e.stopPropagation());
+}
+function renderTags(el, note){
+  const wrap = el.querySelector('[data-role="tags"]');
+  wrap.innerHTML = '';
+  (note.tags||[]).forEach((t, idx)=>{
+    const span = document.createElement('span'); span.className='tag';
+    const label = document.createElement('span'); label.textContent = '#'+t; label.title = 'Click twice to edit';
+    label.style.cursor = 'pointer';
+    let tagClickTimer = null;
+    label.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      if(tagClickTimer){
+        clearTimeout(tagClickTimer); tagClickTimer = null;
+        startInlineTagEdit(span, el, note, idx);
+      } else {
+        tagClickTimer = setTimeout(()=>{ tagClickTimer = null; }, 280);
+      }
+    });
+    const x = document.createElement('span'); x.textContent = '×'; x.title = 'Remove tag';
+    x.style.cursor = 'pointer'; x.style.marginLeft = '4px'; x.style.opacity = '0.6';
+    x.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      note.tags.splice(idx,1); note.updatedAt = nowIso(); persistNotes(); renderTags(el, note);
+    });
+    span.appendChild(label); span.appendChild(x);
+    wrap.appendChild(span);
+  });
+  const addBtn = document.createElement('span');
+  addBtn.className='tag'; addBtn.style.cursor='pointer'; addBtn.textContent='+';
+  addBtn.title='Add tag';
+  addBtn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    startInlineTagAdd(addBtn, el, note);
+  });
+  wrap.appendChild(addBtn);
+  const time = document.createElement('span'); time.className='time'; time.textContent = fmtClockTime(note.updatedAt);
+  time.title = 'Updated '+fmtFullDateTime(note.updatedAt);
+  wrap.appendChild(time);
+}
+
+const MENU_OPEN_Z = 8000000;
+function closeAllNoteMenus(){
+  document.querySelectorAll('.swatch-menu.open,.font-menu.open').forEach(m=>{
+    m.classList.remove('open');
+    const noteEl = m.closest('.note');
+    if(noteEl){
+      const id = noteEl.id.replace(/^note-/, '');
+      const n = S.notes.find(x=>x.id===id);
+      if(n) noteEl.style.zIndex = n.zIndex;
+    }
+  });
+}
+document.addEventListener('click', closeAllNoteMenus);
+
+function openGroupPicker(anchorEl, note){
+  closeAllNoteMenus();
+  document.querySelectorAll('.floating-menu').forEach(m=>m.remove());
+  const rect = anchorEl.getBoundingClientRect();
+  const menu = document.createElement('div');
+  menu.className = 'swatch-menu open floating-menu';
+  menu.style.position = 'fixed';
+  menu.style.left = Math.min(rect.left, window.innerWidth-210)+'px';
+  menu.style.top = (rect.bottom+6)+'px';
+  menu.style.width = '190px';
+  menu.style.zIndex = '9000000';
+  menu.innerHTML = '<div class="menu-label">Select group</div><div data-role="glist"></div>' +
+    '<div style="display:flex; gap:6px; margin-top:8px;">' +
+    '<input type="text" data-role="newgroup" placeholder="New group…" style="flex:1; min-width:0; padding:6px 8px; border:1px solid #CBD5E1; border-radius:6px; font-size:12px;">' +
+    '<button data-role="addgroup" style="background:#F59E0B; border:none; color:#fff; padding:6px 10px; border-radius:6px; font-size:12px; font-weight:700;">Add</button>' +
+    '</div>';
+  document.body.appendChild(menu);
+  menu.addEventListener('click', ev=>ev.stopPropagation());
+
+  function renderList(){
+    const glist = menu.querySelector('[data-role="glist"]');
+    glist.innerHTML = S.groups.map(g=>{
+      const th = NOTE_COLORS[g.color]||NOTE_COLORS.yellow;
+      return `<div class="tb-menu-item" data-g="${escapeHtml(g.name)}" style="color:#1E293B; display:flex; align-items:center; gap:6px;">
+        <span style="width:10px;height:10px;border-radius:50%;background:${th.bg};border:1px solid ${th.borderColor};display:inline-block;"></span>
+        <span style="flex:1;">${escapeHtml(g.name)}</span>
+        ${g.name===note.group?'<span style="color:#CA8A04;">✓</span>':''}
+      </div>`;
+    }).join('');
+    glist.querySelectorAll('[data-g]').forEach(item=>{
+      item.addEventListener('click', (ev)=>{
+        ev.stopPropagation();
+        note.group = item.getAttribute('data-g'); note.updatedAt=nowIso(); persistNotes();
+        menu.remove(); renderNotes(); renderGroups();
+      });
+    });
+  }
+  renderList();
+
+  const newInput = menu.querySelector('[data-role="newgroup"]');
+  const addBtn = menu.querySelector('[data-role="addgroup"]');
+  function createAndAssign(){
+    const name = newInput.value.trim();
+    if(!name) return;
+    let g = S.groups.find(x=>x.name.toLowerCase()===name.toLowerCase());
+    if(!g){
+      g = { id: uid('group'), name, color: COLOR_ORDER[S.groups.length % COLOR_ORDER.length] };
+      S.groups.push(g); persistGroups();
+    }
+    note.group = g.name; note.updatedAt = nowIso(); persistNotes();
+    menu.remove(); renderNotes(); renderGroups();
+  }
+  addBtn.addEventListener('click', (ev)=>{ ev.stopPropagation(); createAndAssign(); });
+  newInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); createAndAssign(); } });
+  newInput.addEventListener('click', ev=>ev.stopPropagation());
+
+  setTimeout(()=>document.addEventListener('click', function h(){ menu.remove(); document.removeEventListener('click',h); }, {once:true}), 0);
+}
+
+/* ==================================================================
+   GROUPS sidebar
+   ================================================================== */
+function openGroupColorPicker(anchorEl, group){
+  closeAllNoteMenus();
+  document.querySelectorAll('.floating-menu').forEach(m=>m.remove());
+  const rect = anchorEl.getBoundingClientRect();
+  const menu = document.createElement('div');
+  menu.className = 'swatch-menu open floating-menu';
+  menu.setAttribute('data-gid', group.id);
+  menu.style.position = 'fixed';
+  menu.style.left = Math.min(rect.left, window.innerWidth-250)+'px';
+  menu.style.top = (rect.bottom+6)+'px';
+  menu.style.width = '230px';
+  menu.style.zIndex = '9000000';
+  menu.innerHTML = '<div class="menu-label">Group color</div><div class="swatch-grid" data-role="g"></div>';
+  document.body.appendChild(menu);
+  const grid = menu.querySelector('[data-role="g"]');
+  COLOR_ORDER.forEach(cid=>{
+    const sw = document.createElement('div');
+    sw.className = 'swatch'+(group.color===cid?' selected':'');
+    sw.style.background = NOTE_COLORS[cid].bg; sw.style.borderColor = NOTE_COLORS[cid].borderColor;
+    sw.title = NOTE_COLORS[cid].name;
+    sw.addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      group.color = cid; persistGroups(); menu.remove(); renderGroups();
+    });
+    grid.appendChild(sw);
+  });
+  menu.addEventListener('click', ev=>ev.stopPropagation());
+  setTimeout(()=>document.addEventListener('click', function h(){ menu.remove(); document.removeEventListener('click',h); }, {once:true}), 0);
+}
+function renderGroups(){
+  const list = document.getElementById('sb-list');
+  const allCount = S.notes.filter(n=>!n.isDeleted && !isGroupHidden(n.group)).length;
+  let html = `
+    <div class="sb-row${S.groupFilter==='ALL'?' active':''}" data-filter="ALL">
+      <span class="sb-icon">📋</span><span class="sb-name">All stickies</span><span class="sb-count">${allCount}</span>
+    </div>
+    <div class="sb-sep"></div>
+  `;
+  html += S.groups.map(g=>{
+    const th = NOTE_COLORS[g.color]||NOTE_COLORS.yellow;
+    const count = S.notes.filter(n=>!n.isDeleted && n.group===g.name).length;
+    const hidden = !!g.isHidden;
+    return `<div class="sb-row sb-row-tinted${S.groupFilter===g.name?' active':''}${hidden?' sb-row-hidden':''}" data-filter="${escapeHtml(g.name)}" data-gid="${g.id}"
+      style="background:${rgba(th.bg,0.55)}; border-left:4px solid ${th.borderColor};">
+      <span class="sb-name" data-act="rename" title="Click twice to rename">${escapeHtml(g.name)}</span>
+      <button class="sb-icon-btn" data-act="hide" title="${hidden?'Show stickies in this group':'Hide stickies in this group'}">${hidden?'🙈':'👁️'}</button>
+      <button class="sb-color" data-act="color" style="background:${th.bg};border-color:${th.borderColor};" title="Change color">🎨</button>
+      <span class="sb-count">${count}</span>
+      <button class="sb-del" data-act="delete" title="Delete group">🗑️</button>
+    </div>`;
+  }).join('');
+  list.innerHTML = html;
+
+  list.querySelectorAll('.sb-row').forEach(row=>{
+    const gid = row.getAttribute('data-gid');
+    const group = gid ? S.groups.find(g=>g.id===gid) : null;
+
+    row.addEventListener('click', (e)=>{
+      if(e.target.closest('[data-act]')) return;
+      S.groupFilter = row.getAttribute('data-filter');
+      renderGroups(); renderNotes();
+    });
+
+    const hideBtn = row.querySelector('[data-act="hide"]');
+    if(hideBtn) hideBtn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      if(!group) return;
+      group.isHidden = !group.isHidden; persistGroups(); renderGroups(); renderNotes();
+    });
+
+    const colorBtn = row.querySelector('[data-act="color"]');
+    if(colorBtn) colorBtn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      const existing = document.querySelector('.floating-menu[data-gid="'+(group?group.id:'')+'"]');
+      if(existing){ existing.remove(); return; }
+      if(group) openGroupColorPicker(colorBtn, group);
+    });
+
+    const delBtn = row.querySelector('[data-act="delete"]');
+    if(delBtn) delBtn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      if(!group) return;
+      const doDelete = (deleteStickiesToo)=>{
+        if(deleteStickiesToo){
+          S.notes.forEach(n=>{ if(n.group===group.name && !n.isDeleted){ n.isDeleted = true; n.updatedAt = nowIso(); } });
+        } else {
+          // Only reassign active stickies; leave already-trashed ones' group label untouched
+          // so their original group name is preserved as history if later restored.
+          S.notes.forEach(n=>{ if(n.group===group.name && !n.isDeleted) n.group='General'; });
+        }
+        S.groups = S.groups.filter(g=>g.id!==group.id);
+        if(S.groupFilter===group.name) S.groupFilter='ALL';
+        persistGroups(); persistNotes(); renderGroups(); renderNotes();
+      };
+      if(S.settings.confirmOnDelete) confirmGroupDelete(group, doDelete);
+      else doDelete(false);
+    });
+
+    const nameEl = row.querySelector('[data-act="rename"]');
+    if(nameEl){
+      let clickTimer = null;
+      nameEl.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        if(clickTimer){
+          clearTimeout(clickTimer); clickTimer = null;
+          if(!group) return;
+          startInlineGroupRename(nameEl, group);
+        } else {
+          clickTimer = setTimeout(()=>{
+            clickTimer = null;
+            S.groupFilter = row.getAttribute('data-filter');
+            renderGroups(); renderNotes();
+          }, 280);
+        }
+      });
+    }
+  });
+}
+function startInlineGroupRename(nameEl, group){
+  const input = document.createElement('input');
+  input.type = 'text'; input.value = group.name; input.className = 'sb-name-input';
+  nameEl.replaceWith(input);
+  input.focus(); input.select();
+  let done = false;
+  function commit(){
+    if(done) return; done = true;
+    const trimmed = input.value.trim();
+    if(trimmed && trimmed !== group.name){
+      const oldName = group.name;
+      S.notes.forEach(n=>{ if(n.group===oldName) n.group=trimmed; });
+      if(S.settings.defaultGroup===oldName) S.settings.defaultGroup=trimmed;
+      if(S.groupFilter===oldName) S.groupFilter=trimmed;
+      group.name = trimmed;
+      persistSettings(); persistNotes(); persistGroups();
+    }
+    renderGroups(); renderNotes();
+  }
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', (e)=>{
+    e.stopPropagation();
+    if(e.key==='Enter'){ e.preventDefault(); input.blur(); }
+    else if(e.key==='Escape'){ done = true; renderGroups(); }
+  });
+  input.addEventListener('click', e=>e.stopPropagation());
+}
+function renderNotes(){
+  normalizeAllLayers();
+  notesLayer.innerHTML = '';
+  for(const id in noteEls) delete noteEls[id];
+  const list = visibleNotes().sort((a,b)=>{
+    const pa = a.isPinned?1:0, pb = b.isPinned?1:0;
+    if(pa!==pb) return pa-pb;
+    return (a.zIndex||0)-(b.zIndex||0);
+  });
+  if(S.viewMode==='grid'){
+    // Locked stickies are protected from positional changes as well.
+    layoutGrid(list.filter(n=>!n.isLocked), false);
+  }
+  list.forEach(n=>notesLayer.appendChild(buildNoteEl(n)));
+  resizeCanvas();
+  refreshInfoTooltip();
+}
+function renderBoth(){ renderGroups(); renderNotes(); }
+
+/* ---------------- New note creation ---------------- */
+function pickNewNotePosition(){
+  const s = S.settings;
+  if(s.positionMode==='fixed') return { x:s.fixedX, y:s.fixedY };
+  if(s.positionMode==='random'){
+    return { x: 40+Math.floor(Math.random()*Math.max(200,(canvasWrap.clientWidth-s.defaultWidth-80))),
+             y: 140+Math.floor(Math.random()*400) };
+  }
+  // offset: cascade from last created note
+  const nonDeleted = S.notes.filter(n=>!n.isDeleted);
+  const last = nonDeleted[nonDeleted.length-1];
+  if(!last) return { x:60, y:120 };
+  return { x: (last.x+30) % 1600 + 40, y: (last.y+30) % 900 + 120 };
+}
+function duplicateNote(note){
+  const copy = JSON.parse(JSON.stringify(note));
+  copy.id = uid('note');
+  copy.displayId = nextDisplayId();
+  copy.title = (note.title || 'Untitled') + ' (copy)';
+  copy.x = note.x + 24; copy.y = note.y + 24;
+  copy.isPinned = false; copy.isLocked = false;
+  copy.zIndex = nextZ(false);
+  copy.createdAt = nowIso(); copy.updatedAt = nowIso();
+  const resolved = resolveNonOverlapPosition(copy, S.notes);
+  copy.x = resolved.x; copy.y = resolved.y;
+  S.notes.push(copy); normalizeAllLayers(); persistNotes(); renderNotes(); renderGroups();
+  toast('Sticky duplicated');
+}
+function createNote(opts){
+  opts = opts || {};
+  const s = S.settings;
+  const pos = pickNewNotePosition();
+  const template = s.contentMode==='template'
+    ? 'New note...\n\n🔲 Add a checklist item\n🔲 Another item'
+    : '';
+  const note = {
+    id: uid('note'), displayId: nextDisplayId(), title: opts.title || 'New Sticky', content: opts.content!==undefined?opts.content:template,
+    color: opts.color || s.defaultColor, customColor:null, opacity: s.defaultOpacity,
+    group: opts.group !== undefined ? opts.group : s.defaultGroup,
+    x: pos.x, y: pos.y, width: s.defaultWidth, height: s.defaultHeight,
+    zIndex: nextZ(false), isPinned:false, isRolledUp:false, isLocked:false, isDeleted:false,
+    tags: [], fontFamily:'sans', fontSize:'base', createdAt: nowIso(), updatedAt: nowIso(),
+  };
+  const resolved = resolveNonOverlapPosition(note, S.notes);
+  note.x = resolved.x; note.y = resolved.y;
+  note.isLocked = false;
+  S.notes.push(note); normalizeAllLayers(); persistNotes(); renderNotes(); renderGroups();
+  setTimeout(()=>{
+    const el = noteEls[note.id];
+    if(el){ el.scrollIntoView({behavior:'smooth', block:'center', inline:'center'}); el.querySelector('[data-role="edit"]')?.focus(); }
+  }, 30);
+}
+
+/* ---------------- Auto organize ---------------- */
+function layoutGrid(list, persist){
+  const cols = Math.max(1, Math.floor((canvasWrap.clientWidth-60)/(280+20)));
+  let x=40, y=110, col=0;
+  list.forEach(n=>{
+    n.x = x; n.y = y; n.width = Math.min(n.width,280)||280; n.height = n.height||240;
+    col++; x += 280+20;
+    if(col>=cols){ col=0; x=40; y += (n.height+20); }
+  });
+  if(persist) persistNotes();
+}
+function autoOrganize(mode){
+  const list = S.notes.filter(n=>!n.isDeleted && !n.isPinned && !n.isLocked);
+  const gap = 20;
+  if(mode==='tile'){
+    layoutGrid(list, true);
+  } else if(mode==='cascade'){
+    let x=60,y=120;
+    list.forEach(n=>{ n.x=x; n.y=y; x+=32; y+=32; if(x>1200){x=60;} if(y>1400){y=120;} });
+    persistNotes();
+  } else if(mode==='group'){
+    let gx=40;
+    S.groups.forEach(g=>{
+      let x=gx, y=140, colw=0, rowh=0, maxW=560;
+      list.filter(n=>n.group===g.name).forEach(n=>{
+        n.x=x; n.y=y; rowh=Math.max(rowh,n.height);
+        x += n.width+gap; colw += n.width+gap;
+        if(colw>maxW){ colw=0; x=gx; y+=rowh+gap; rowh=0; }
+      });
+      gx += maxW+80;
+    });
+    // notes whose group has no group-icon get appended at the end
+    const knownGroups = new Set(S.groups.map(g=>g.name));
+    let ux=gx, uy=140;
+    list.filter(n=>!knownGroups.has(n.group)).forEach(n=>{ n.x=ux; n.y=uy; uy+=n.height+gap; });
+    persistNotes();
+  } else if(mode==='color'){
+    let x=40,y=140,rowh=0,maxW=canvasWrap.clientWidth-100;
+    COLOR_ORDER.forEach(cid=>{
+      list.filter(n=>(n.customColor?false:n.color)===cid).forEach(n=>{
+        n.x=x; n.y=y; rowh=Math.max(rowh,n.height); x+=n.width+gap;
+        if(x>maxW){ x=40; y+=rowh+gap; rowh=0; }
+      });
+      x += 40;
+    });
+    persistNotes();
+  } else if(mode==='compact'){
+    let x=40,y=110,rowh=0,maxW=canvasWrap.clientWidth-100;
+    list.sort((a,b)=>a.y-b.y || a.x-b.x).forEach(n=>{
+      if(x+n.width>maxW){ x=40; y+=rowh+8; rowh=0; }
+      n.x=x; n.y=y; rowh=Math.max(rowh,n.height); x+=n.width+8;
+    });
+    persistNotes();
+  }
+  renderNotes();
+}
+
+/* ==================================================================
+   Confirm dialog helper
+   ================================================================== */
+function confirmDialog(title, msg, onConfirm){
+  document.getElementById('confirm-title').textContent = title;
+  document.getElementById('confirm-msg').textContent = msg;
+  const extra = document.getElementById('confirm-extra'); if(extra) extra.innerHTML = '';
+  openModal('modal-confirm');
+  const btn = document.getElementById('confirm-ok-btn');
+  const newBtn = btn.cloneNode(true); btn.parentNode.replaceChild(newBtn, btn);
+  newBtn.addEventListener('click', ()=>{ closeModal('modal-confirm'); onConfirm(); });
+}
+function confirmGroupDelete(group, onConfirm){
+  const msgKeep = 'Stickies in this group will move to "General". This cannot be undone.';
+  const msgDelete = 'Stickies in this group will also be deleted and moved to the Trash. You can restore them later.';
+  document.getElementById('confirm-title').textContent = 'Delete group "'+group.name+'"?';
+  const msgEl = document.getElementById('confirm-msg');
+  msgEl.textContent = msgKeep;
+  const extra = document.getElementById('confirm-extra');
+  extra.innerHTML = `<label style="display:flex; align-items:flex-start; gap:8px; margin-top:12px; font-size:12.5px; color:#334155; cursor:pointer;">
+    <input type="checkbox" id="confirm-delete-stickies-too" style="margin-top:2px;">
+    <span>Also delete the stickies associated with this group ("${escapeHtml(group.name)}")</span>
+  </label>`;
+  const cb = document.getElementById('confirm-delete-stickies-too');
+  cb.addEventListener('change', ()=>{ msgEl.textContent = cb.checked ? msgDelete : msgKeep; });
+  openModal('modal-confirm');
+  const btn = document.getElementById('confirm-ok-btn');
+  const newBtn = btn.cloneNode(true); btn.parentNode.replaceChild(newBtn, btn);
+  newBtn.addEventListener('click', ()=>{
+    const deleteToo = cb.checked;
+    closeModal('modal-confirm');
+    onConfirm(deleteToo);
+  });
+}
+function openModal(id){ document.getElementById(id).hidden = false; }
+function closeModal(id){ document.getElementById(id).hidden = true; }
+document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click', ()=>closeModal(b.getAttribute('data-close'))));
+document.querySelectorAll('.modal-overlay').forEach(ov=>ov.addEventListener('click', (e)=>{ if(e.target===ov) ov.hidden = true; }));
+
+/* ---------------- Custom prompt (replaces native prompt(), no "This page says") ---------------- */
+let _promptResolve = null;
+function customPrompt(title, defaultValue){
+  return new Promise((resolve)=>{
+    _promptResolve = resolve;
+    document.getElementById('prompt-title').textContent = title;
+    const input = document.getElementById('prompt-input');
+    input.value = defaultValue || '';
+    openModal('modal-prompt');
+    setTimeout(()=>{ input.focus(); input.select(); }, 50);
+  });
+}
+function _resolvePrompt(val){
+  closeModal('modal-prompt');
+  if(_promptResolve){ _promptResolve(val); _promptResolve = null; }
+}
+document.getElementById('prompt-ok-btn').addEventListener('click', ()=>_resolvePrompt(document.getElementById('prompt-input').value));
+document.getElementById('prompt-cancel-btn').addEventListener('click', ()=>_resolvePrompt(null));
+document.getElementById('prompt-x-btn').addEventListener('click', ()=>_resolvePrompt(null));
+document.getElementById('prompt-input').addEventListener('keydown', (e)=>{
+  if(e.key==='Enter'){ e.preventDefault(); _resolvePrompt(e.target.value); }
+  else if(e.key==='Escape'){ _resolvePrompt(null); }
+});
+
+/* ---------------- Link insert modal (Ctrl+K) ---------------- */
+let _linkResolve = null;
+function customLinkPrompt(defaultText){
+  return new Promise((resolve)=>{
+    _linkResolve = resolve;
+    document.getElementById('link-text-input').value = defaultText || '';
+    document.getElementById('link-url-input').value = '';
+    openModal('modal-link');
+    setTimeout(()=>{
+      const el = defaultText ? document.getElementById('link-url-input') : document.getElementById('link-text-input');
+      el.focus();
+    }, 50);
+  });
+}
+function _resolveLink(val){
+  closeModal('modal-link');
+  if(_linkResolve){ _linkResolve(val); _linkResolve = null; }
+}
+function _submitLink(){
+  const text = document.getElementById('link-text-input').value.trim() || 'New Link';
+  let url = document.getElementById('link-url-input').value.trim();
+  if(!url){ _resolveLink(null); return; }
+  if(!/^https?:\/\//i.test(url) && !/^mailto:/i.test(url)) url = 'https://' + url;
+  _resolveLink({text, url});
+}
+document.getElementById('link-insert-btn').addEventListener('click', _submitLink);
+document.getElementById('link-cancel-btn').addEventListener('click', ()=>_resolveLink(null));
+document.getElementById('link-x-btn').addEventListener('click', ()=>_resolveLink(null));
+[document.getElementById('link-text-input'), document.getElementById('link-url-input')].forEach(inp=>{
+  inp.addEventListener('keydown', (e)=>{
+    if(e.key==='Enter'){ e.preventDefault(); _submitLink(); }
+    else if(e.key==='Escape'){ _resolveLink(null); }
+  });
+});
+
+/* ==================================================================
+   SETTINGS modal
+   ================================================================== */
+function renderSettingsModal(){
+  const s = S.settings;
+  const body = document.getElementById('settings-body');
+  body.innerHTML = `
+    <div class="stg-label">✛ Default position for new notes</div>
+    <div class="stg-cards" data-role="pos-mode">
+      <div class="stg-card${s.positionMode==='offset'?' selected':''}" data-v="offset"><b>Cascading Offset</b><small>Staggers each note diagonally</small></div>
+      <div class="stg-card${s.positionMode==='fixed'?' selected':''}" data-v="fixed"><b>Set (X, Y) Position</b><small>Appears at exact coordinates</small></div>
+      <div class="stg-card${s.positionMode==='random'?' selected':''}" data-v="random"><b>Random Position</b><small>Random scattered placement</small></div>
+    </div>
+    <div class="stg-row2" id="fixed-xy-row" style="display:${s.positionMode==='fixed'?'grid':'none'}; margin-top:10px;">
+      <div class="stg-field"><label>Fixed X</label><input type="number" id="set-fixedX" value="${s.fixedX}" style="width:100%;padding:9px 10px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;"></div>
+      <div class="stg-field"><label>Fixed Y</label><input type="number" id="set-fixedY" value="${s.fixedY}" style="width:100%;padding:9px 10px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;"></div>
+    </div>
+
+    <div class="stg-label">↗️ Default size of new notes</div>
+    <div class="stg-row2">
+      <div class="stg-slider-wrap">
+        <div class="stg-slider-title">Width <b id="w-val">${s.defaultWidth}px</b></div>
+        <input type="range" id="set-w" min="200" max="600" step="10" value="${s.defaultWidth}">
+        <div class="stg-slider-labels"><span>200px</span><span>600px</span></div>
+      </div>
+      <div class="stg-slider-wrap">
+        <div class="stg-slider-title">Height <b id="h-val">${s.defaultHeight}px</b></div>
+        <input type="range" id="set-h" min="160" max="600" step="10" value="${s.defaultHeight}">
+        <div class="stg-slider-labels"><span>160px</span><span>600px</span></div>
+      </div>
+    </div>
+
+    <div class="stg-label">Default note content behavior</div>
+    <div class="stg-cards" data-role="content-mode">
+      <div class="stg-card${s.contentMode==='blank'?' selected':''}" data-v="blank"><b>Always Blank Note</b><small>Creates completely empty notes ready to type</small></div>
+      <div class="stg-card${s.contentMode==='template'?' selected':''}" data-v="template"><b>Template Starter Text</b><small>Fills note with template starter prompts</small></div>
+    </div>
+
+    <div class="stg-row2">
+      <div>
+        <div class="stg-label">📁 Default group</div>
+        <div class="stg-field"><select id="set-group">${S.groups.map(g=>`<option value="${g.name}" ${g.name===s.defaultGroup?'selected':''}>${g.name}</option>`).join('')}</select></div>
+      </div>
+      <div>
+        <div class="stg-label">🎨 Default color</div>
+        <div class="stg-color-row" id="set-color-grid"></div>
+      </div>
+    </div>
+
+    <div class="stg-row2">
+      <div class="stg-slider-wrap">
+        <div class="stg-label" style="margin-bottom:2px;">Default opacity</div>
+        <div class="stg-slider-title"><b id="op-val">${Math.round(s.defaultOpacity*100)}%</b></div>
+        <input type="range" id="set-op" min="0.3" max="1" step="0.05" value="${s.defaultOpacity}">
+        <div class="stg-slider-labels"><span>30% Translucent</span><span>100% Solid</span></div>
+      </div>
+      <div>
+        <div class="stg-label">Canvas grid snapping</div>
+        <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:#334155; cursor:pointer; margin-top:8px;">
+          <input type="checkbox" id="set-snap" ${s.snapToGrid?'checked':''}> Snap notes to ${s.gridSize}px grid
+        </label>
+        <div class="stg-field" id="grid-size-field" style="display:${s.snapToGrid?'block':'none'}; margin-top:8px;">
+          <label>Grid size (px)</label><input type="number" id="set-gridsize" value="${s.gridSize}" style="width:100%;padding:9px 10px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;">
+        </div>
+      </div>
+    </div>
+
+    <div class="stg-label">Drag & drop overlap behavior</div>
+    <div class="stg-cards" data-role="drag-behavior">
+      <div class="stg-card${s.dragBehavior==='overlap'?' selected':''}" data-v="overlap"><b>Stay Overlapped (Keep Position)</b><small>Notes stay exactly where you drop them, overlapping naturally</small></div>
+      <div class="stg-card${s.dragBehavior==='auto-adjust'?' selected':''}" data-v="auto-adjust"><b>Auto-Adjust to Nearest Empty Spot</b><small>Automatically resolves collision so notes don't overlap</small></div>
+    </div>
+    <div class="hint" style="margin-top:6px;">Resizing/expanding a note is always allowed to overlap others — this only affects dragging.</div>
+
+    <div class="stg-label">🗑️ Ask before deleting</div>
+    <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:#334155; cursor:pointer;">
+      <input type="checkbox" id="set-confirmdelete" ${s.confirmOnDelete?'checked':''}> Show a confirmation before deleting a sticky or a group
+    </label>
+
+    <div class="stg-label">☁️ Google Drive sync</div>
+    <div class="stg-field">
+      <div class="hint">
+        Google Drive sync is <b>optional and off by default</b>. The official Stickies deployment already has Google OAuth configured, so you do not need to enter a Client ID.
+      </div>
+      <div class="hint" style="margin-top:8px;">Connect from <b>Sync with Google Drive</b> in the top bar. Stickies requests access only when you explicitly connect your Google account.</div>
+      <div style="margin-top:8px;font-size:12px;">
+        <a href="./README.html" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none;font-weight:600;">📖 Read the Stickies README</a>
+      </div>
+    </div>
+    <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:#334155; cursor:pointer; margin-top:12px;">
+      <input type="checkbox" id="set-autosync" ${s.autoSync?'checked':''}> Auto-sync in the background once connected
+    </label>
+
+    <div class="stg-row2" style="margin-top:22px; padding-top:14px; border-top:1px solid #F1F5F9;">
+      <div class="stg-field"><label>Canvas width (px)</label><input type="number" id="set-cw" value="${s.canvasWidth}" style="width:100%;padding:9px 10px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;"></div>
+      <div class="stg-field"><label>Canvas height (px)</label><input type="number" id="set-ch" value="${s.canvasHeight}" style="width:100%;padding:9px 10px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;"></div>
+    </div>
+  `;
+  body.querySelectorAll('[data-role="pos-mode"] .stg-card').forEach(b=>b.addEventListener('click', ()=>{
+    s.positionMode=b.getAttribute('data-v'); persistSettings(); renderSettingsModal();
+  }));
+  body.querySelectorAll('[data-role="content-mode"] .stg-card').forEach(b=>b.addEventListener('click', ()=>{
+    s.contentMode=b.getAttribute('data-v'); persistSettings(); renderSettingsModal();
+  }));
+  body.querySelectorAll('[data-role="drag-behavior"] .stg-card').forEach(b=>b.addEventListener('click', ()=>{
+    s.dragBehavior=b.getAttribute('data-v'); persistSettings(); renderSettingsModal();
+  }));
+  const bind = (id, key, parser)=>{
+    const elx = document.getElementById(id);
+    elx.addEventListener('change', ()=>{ s[key] = parser? parser(elx.value) : elx.value; persistSettings(); resizeCanvas(); });
+  };
+  bind('set-fixedX','fixedX',parseInt); bind('set-fixedY','fixedY',parseInt);
+  bind('set-group','defaultGroup');
+  bind('set-cw','canvasWidth',parseInt); bind('set-ch','canvasHeight',parseInt);
+  bind('set-gridsize','gridSize',parseInt);
+  document.getElementById('set-w').addEventListener('input', (e)=>{ document.getElementById('w-val').textContent = e.target.value+'px'; });
+  document.getElementById('set-w').addEventListener('change', (e)=>{ s.defaultWidth = parseInt(e.target.value); persistSettings(); });
+  document.getElementById('set-h').addEventListener('input', (e)=>{ document.getElementById('h-val').textContent = e.target.value+'px'; });
+  document.getElementById('set-h').addEventListener('change', (e)=>{ s.defaultHeight = parseInt(e.target.value); persistSettings(); });
+  const colorGrid = document.getElementById('set-color-grid');
+  COLOR_ORDER.forEach(cid=>{
+    const dot = document.createElement('div');
+    dot.className = 'stg-color-dot'+(cid===s.defaultColor?' selected':'');
+    dot.style.background = NOTE_COLORS[cid].bg;
+    dot.title = NOTE_COLORS[cid].name;
+    dot.textContent = cid===s.defaultColor ? '✓' : '';
+    dot.addEventListener('click', ()=>{
+      s.defaultColor = cid; persistSettings();
+      colorGrid.querySelectorAll('.stg-color-dot').forEach(x=>{ x.classList.remove('selected'); x.textContent=''; });
+      dot.classList.add('selected'); dot.textContent='✓';
+    });
+    colorGrid.appendChild(dot);
+  });
+  document.getElementById('set-op').addEventListener('input', (e)=>{
+    s.defaultOpacity = parseFloat(e.target.value); document.getElementById('op-val').textContent = Math.round(s.defaultOpacity*100)+'%';
+  });
+  document.getElementById('set-op').addEventListener('change', persistSettings);
+  document.getElementById('set-snap').addEventListener('change', (e)=>{
+    s.snapToGrid = e.target.checked; persistSettings(); resizeCanvas();
+    document.getElementById('grid-size-field').style.display = s.snapToGrid?'block':'none';
+  });
+  document.getElementById('set-autosync').addEventListener('change', (e)=>{ s.autoSync = e.target.checked; persistSettings(); });
+  document.getElementById('set-confirmdelete').addEventListener('change', (e)=>{ s.confirmOnDelete = e.target.checked; persistSettings(); });
+}
+document.getElementById('btn-settings').addEventListener('click', ()=>{ renderSettingsModal(); openModal('modal-settings'); });
+document.getElementById('btn-reset-app').addEventListener('click', ()=>{
+  confirmDialog('Reset all app data?', 'This deletes every note, group and setting stored in this browser. This cannot be undone. Consider exporting a backup first.', ()=>{
+    localStorage.removeItem(LS_NOTES); localStorage.removeItem(LS_GROUPS); localStorage.removeItem(LS_SETTINGS); localStorage.removeItem(LS_SYNC);
+    location.reload();
+  });
+});
+
+/* ==================================================================
+   ABOUT modal
+   ================================================================== */
+function renderAboutModal(){
+  document.getElementById('about-body').innerHTML = `
+    <p style="font-size:13.5px;color:#475569;line-height:1.5;">Stickies is a private, offline-first sticky notes app. It runs entirely in your browser — there is no server, no account, and no tracking. Your notes stay in this browser unless you explicitly connect Google Drive.</p>
+
+    <div class="about-card" style="display:block;">
+      <h3 style="margin:0 0 6px;font-size:15px;color:#1E293B;">Installing Stickies</h3>
+      <p style="margin:0;color:#64748B;font-size:12.5px;line-height:1.5;">When hosted on GitHub Pages, Stickies can be installed as a PWA on Android, iPhone/iPad where supported, and desktop browsers. After installation, the app can continue working offline.</p>
+    </div>
+
+    <div class="about-grid">
+      <div class="about-card"><span class="emoji">🖱️</span><b>Free placement</b><small>Drag notes anywhere on the canvas; drop one near another and it aligns without overlapping when enabled.</small></div>
+      <div class="about-card"><span class="emoji">🎨</span><b>Colors & transparency</b><small>Built-in themes, custom colors, and adjustable opacity.</small></div>
+      <div class="about-card"><span class="emoji">✍️</span><b>Rich text</b><small>Bold, italic, underline, strikethrough, bullets and numbering with visual Markdown-style list behavior.</small></div>
+      <div class="about-card"><span class="emoji">☑️</span><b>Checklists</b><small>Type <code>[]</code> or <code>[x]</code> at the start of a line for a clickable checklist box.</small></div>
+      <div class="about-card"><span class="emoji">🔍</span><b>Search & highlight</b><small>Search across titles, content, tags, and groups.</small></div>
+      <div class="about-card"><span class="emoji">📁</span><b>Groups sidebar</b><small>Organize stickies into color-coded groups.</small></div>
+      <div class="about-card"><span class="emoji">🧹</span><b>Auto-organize</b><small>Tile, cascade, compact, or cluster notes.</small></div>
+      <div class="about-card"><span class="emoji">🗒️</span><b>Sticky Manager</b><small>Manage, move, delete, export, import, and edit stickies in bulk.</small></div>
+      <div class="about-card"><span class="emoji">🗑️</span><b>Trash</b><small>Deleted stickies remain recoverable until permanently removed.</small></div>
+      <div class="about-card"><span class="emoji">📴</span><b>Installable PWA</b><small>Add Stickies to your home screen or desktop and use it offline.</small></div>
+      <div class="about-card"><span class="emoji">🔒</span><b>Data & privacy</b><small>Core notes stay in your browser. Google Drive is optional and only used when you explicitly connect it.</small></div>
+      <div class="about-card"><span class="emoji">☁️</span><b>Optional Drive sync</b><small>The official deployment has Google OAuth configured. Users do not need to enter a Client ID. See the <a href="./README.html" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none;font-weight:600;">README</a> for Google Drive details and forking instructions.</small></div>
+    </div>
+
+    <div class="about-card" style="margin-top:16px;display:block;">
+      <h3 style="margin:0 0 6px;font-size:15px;color:#1E293B;">Data & privacy</h3>
+      <p style="margin:0;color:#64748B;font-size:12.5px;line-height:1.5;">Stickies does not require an account or server for its core features. Nothing is sent anywhere unless you explicitly connect Google Drive. Browser storage is not a substitute for backups, so use the export/backup features periodically.</p>
+    </div>
+
+    <div class="about-card" style="margin-top:12px;display:block;">
+      <h3 style="margin:0 0 6px;font-size:15px;color:#1E293B;">Sharing / forking Stickies</h3>
+      <p style="margin:0;color:#64748B;font-size:12.5px;line-height:1.5;">Stickies is intended to be shareable and forkable. The official deployment already contains its Google OAuth configuration. If you fork and deploy Stickies under your own origin, configure a Google OAuth client for that deployment and replace the built-in client ID as described in the <a href="./README.html" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none;font-weight:600;">README</a>.</p>
+    </div>
+
+    <div class="about-card" style="margin-top:12px;display:block;">
+      <h3 style="margin:0 0 6px;font-size:15px;color:#1E293B;">Legal</h3>
+      <p style="margin:0;font-size:12.5px;"><a href="./privacy.html" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none;">Privacy Policy</a><span style="color:#CBD5E1;"> · </span><a href="./terms.html" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none;">Terms of Service</a></p>
+    </div>
+
+    <div class="about-card" style="margin-top:12px;display:block;">
+      <h3 style="margin:0 0 6px;font-size:15px;color:#1E293B;">Version</h3>
+      <p style="margin:0;color:#94A3B8;font-size:12px;">Stickies · v1.0.0 · MIT licensed</p>
+      <button id="stkCheckUpdateBtn" class="stk-check-update-btn" type="button">
+        <span aria-hidden="true">↻</span><span class="stk-check-label">Check for updates</span>
+      </button>
+      <div id="stkUpdateCheckStatus" class="stk-update-check-status" aria-live="polite"></div>
+    </div>
+
+    <div class="about-card" style="margin-top:12px;display:block;">
+      <h3 style="margin:0 0 6px;font-size:15px;color:#1E293B;">Share this app</h3>
+      <p style="margin:0 0 10px;color:#64748B;font-size:12.5px;line-height:1.5;">Enjoying Stickies? Share it with family, friends, colleagues, or anyone who wants a simple private sticky-note app.</p>
+      <button id="shareStickiesBtn" class="pet-share-btn" type="button">📤 Share Stickies</button>
+    </div>
+  `;
+
+  const checkBtn = document.getElementById('stkCheckUpdateBtn');
+  if(checkBtn && typeof checkForStickiesUpdate === 'function') checkBtn.addEventListener('click', checkForStickiesUpdate);
+
+  const shareBtn = document.getElementById('shareStickiesBtn');
+  if(shareBtn){
+    shareBtn.addEventListener('click', async ()=>{
+      const shareData = {
+        title:'Stickies',
+        text:'Try Stickies — a simple, private and offline-first sticky notes app.',
+        url:'https://bkar81.github.io/stickies/'
+      };
+      try{
+        if(navigator.share) await navigator.share(shareData);
+        else if(navigator.clipboard && window.isSecureContext){ await navigator.clipboard.writeText(shareData.url); toast('Stickies app link copied.'); }
+        else window.prompt('Copy the Stickies app link:', shareData.url);
+      }catch(err){ if(!err || err.name!=='AbortError') console.error('Unable to share Stickies:', err); }
+    });
+  }
+}
+document.getElementById('btn-about').addEventListener('click', ()=>{ renderAboutModal(); openModal('modal-about'); });
+
+/* ==================================================================
+   ARCHIVE / TRASH drawer
+   ================================================================== */
+function renderArchive(){
+  const list = S.notes.filter(n=>n.isDeleted);
+  const wrap = document.getElementById('archive-list');
+  if(!list.length){ wrap.innerHTML = '<div class="archive-empty">Trash is empty 🎉</div>'; return; }
+  wrap.innerHTML = '';
+  list.sort((a,b)=> new Date(b.updatedAt)-new Date(a.updatedAt)).forEach(n=>{
+    const item = document.createElement('div'); item.className='archive-item';
+    item.innerHTML = `<div class="t">${escapeHtml(n.title||'Untitled')}</div><div class="c">${escapeHtml(n.content||'')}</div>
+      <div class="row"><button data-act="restore">♻️ Restore</button><button data-act="purge">🔥 Delete forever</button></div>`;
+    item.querySelector('[data-act="restore"]').addEventListener('click', ()=>{
+      n.isDeleted=false; n.updatedAt=nowIso(); persistNotes(); renderArchive(); renderNotes(); renderGroups(); toast('Note restored');
+    });
+    item.querySelector('[data-act="purge"]').addEventListener('click', ()=>{
+      confirmDialog('Delete forever?', 'This note will be permanently removed.', ()=>{
+        S.notes = S.notes.filter(x=>x.id!==n.id); normalizeAllLayers(); persistNotes(); renderArchive(); toast('Deleted permanently');
+      });
+    });
+    wrap.appendChild(item);
+  });
+}
+document.getElementById('btn-archive').addEventListener('click', ()=>{ renderArchive(); document.getElementById('archive-drawer').classList.add('open'); });
+document.getElementById('btn-close-archive').addEventListener('click', ()=>document.getElementById('archive-drawer').classList.remove('open'));
+document.getElementById('btn-empty-trash').addEventListener('click', ()=>{
+  const list = S.notes.filter(n=>n.isDeleted);
+  if(!list.length) return;
+  confirmDialog('Empty trash?', 'Permanently delete '+list.length+' note(s). This cannot be undone.', ()=>{
+    S.notes = S.notes.filter(n=>!n.isDeleted); persistNotes(); renderArchive(); toast('Trash emptied');
+  });
+});
+
+/* ==================================================================
+   NOTE MANAGER page
+   ================================================================== */
+const mgr = { groupFilter:'ALL', selected:new Set(), search:'', sort:'updated_desc', view:'grouped' };
+function renderManager(){
+  // side panel
+  const side = document.getElementById('mgr-side');
+  const activeCount = S.notes.filter(n=>!n.isDeleted).length;
+  const trashCount = S.notes.filter(n=>n.isDeleted).length;
+  document.getElementById('mgr-total-badge').textContent = activeCount+' Total Stickies';
+  let html = `<div class="mside-item${mgr.groupFilter==='ALL'?' active':''}" data-g="ALL">📋 All Stickies <span>${activeCount}</span></div>
+              <div class="mside-item${mgr.groupFilter==='TRASH'?' active':''}" data-g="TRASH">🗑️ Trash <span>${trashCount}</span></div>`;
+  S.groups.forEach(g=>{
+    const c = S.notes.filter(n=>!n.isDeleted && n.group===g.name).length;
+    const th = NOTE_COLORS[g.color]||NOTE_COLORS.yellow;
+    html += `<div class="mside-item${mgr.groupFilter===g.name?' active':''}" data-g="${escapeHtml(g.name)}" style="background:${rgba(th.bg,0.35)}; border-left:3px solid ${th.borderColor};">${escapeHtml(g.name)} <span>${c}</span></div>`;
+  });
+  side.innerHTML = html;
+  side.querySelectorAll('.mside-item').forEach(it=>it.addEventListener('click', ()=>{ mgr.groupFilter = it.getAttribute('data-g'); renderManagerList(); renderManager(); }));
+
+  const moveTo = document.getElementById('mgr-move-to');
+  moveTo.innerHTML = '<option value="">Move to group…</option>' +
+    S.groups.map(g=>`<option value="${escapeHtml(g.name)}">📁 ${escapeHtml(g.name)}</option>`).join('');
+  document.getElementById('mgr-restore-btn').hidden = mgr.groupFilter !== 'TRASH';
+  document.getElementById('mgr-delete-btn').textContent = mgr.groupFilter==='TRASH' ? 'Delete forever' : 'Delete selected';
+  renderManagerList();
+}
+function managerRows(){
+  let rows;
+  if(mgr.groupFilter==='TRASH') rows = S.notes.filter(n=>n.isDeleted);
+  else if(mgr.groupFilter==='ALL') rows = S.notes.filter(n=>!n.isDeleted);
+  else rows = S.notes.filter(n=>!n.isDeleted && n.group===mgr.groupFilter);
+  if(mgr.search){
+    const q = mgr.search.toLowerCase();
+    rows = rows.filter(n=>matchesSearch(n,q));
+  }
+  const sorters = {
+    updated_desc: (a,b)=> new Date(b.updatedAt)-new Date(a.updatedAt),
+    created_desc: (a,b)=> new Date(b.createdAt)-new Date(a.createdAt),
+    created_asc: (a,b)=> new Date(a.createdAt)-new Date(b.createdAt),
+    group: (a,b)=> (a.group||'').localeCompare(b.group||''),
+    title: (a,b)=> (a.title||'').localeCompare(b.title||''),
+  };
+  return rows.slice().sort(sorters[mgr.sort]||sorters.updated_desc);
+}
+function stripHtml(html){
+  const tmp = document.createElement('div'); tmp.innerHTML = html || '';
+  return tmp.textContent || tmp.innerText || '';
+}
+function noteCardHtml(n){
+  const th = noteTheme(n);
+  const tier = tierNotes(!!n.isPinned).sort((a,b)=>a.zIndex-b.zIndex);
+  const rank = tier.findIndex(x=>x.id===n.id)+1;
+  const inTrash = n.isDeleted;
+  return `<div class="mgr-card${inTrash?' deleted':''}" data-id="${n.id}">
+    <input type="checkbox" data-sel="${n.id}" ${mgr.selected.has(n.id)?'checked':''}>
+    <span class="dot" style="background:${th.bg};border:1px solid ${th.borderColor}"></span>
+    <div class="mgr-card-main">
+      <div class="mgr-card-top">
+        <b>${escapeHtml(n.title||'Untitled')}</b>
+        ${inTrash ? '' : `<select class="mgr-group-select" data-id="${n.id}" ${n.isLocked?'disabled title="Locked sticky — unlock it before modifying"':''}>${S.groups.map(g=>`<option value="${escapeHtml(g.name)}" ${g.name===n.group?'selected':''}>${escapeHtml(g.name)}</option>`).join('')}</select>`}
+        ${n.isPinned ? '<span class="mgr-pin-badge">📌 Pinned</span>' : ''}
+        ${n.isLocked ? '<span class="mgr-pin-badge">🔒 Locked</span>' : ''}
+      </div>
+      <div class="mgr-card-content">${escapeHtml(stripHtml(n.content).slice(0,160))}</div>
+      <div class="mgr-card-meta">
+        <span>🕐 Updated ${fmtFullDateTime(n.updatedAt)}</span>
+        <span>📅 Created ${fmtFullDateTime(n.createdAt)}</span>
+        <span>📍 x:${Math.round(n.x)}, y:${Math.round(n.y)}</span>
+        <span>📐 ${Math.round(n.width)}×${Math.round(n.height)}px</span>
+        <span>🗂️ Layer ${rank}/${tier.length}</span>
+      </div>
+      <div class="mgr-card-tags">${(n.tags||[]).map(t=>`<span>#${escapeHtml(t)}</span>`).join('')}</div>
+    </div>
+    <div class="mgr-card-actions">
+      ${inTrash ? `
+        <button class="row" data-act="restore" title="Restore this sticky">♻️ Restore</button>
+        <button class="danger-icon" data-act="purge" title="Delete forever">🗑️ Delete forever</button>
+      ` : `
+        <button class="open-btn" data-act="open" title="Open and center on free-form desktop canvas">↗️ Open on Canvas</button>
+        <div class="row">
+          <button data-act="export" title="Export this note as JSON">⬇️</button>
+          <button class="danger-icon" data-act="delete" ${n.isLocked?'disabled title="Locked sticky — unlock it before modifying"':'title="Delete this note (moves to trash)"'}>🗑️</button>
+        </div>
+      `}
+    </div>
+  </div>`;
+}
+function renderManagerList(){
+  const rows = managerRows();
+  const container = document.getElementById('mgr-list');
+  if(!rows.length){
+    container.innerHTML = '<div class="mgr-empty">No stickies here.</div>';
+  } else if(mgr.view === 'grouped' && mgr.groupFilter !== 'TRASH'){
+    const buckets = new Map();
+    S.groups.forEach(g=>buckets.set(g.name, []));
+    rows.forEach(n=>{
+      const key = n.group || 'General';
+      if(!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(n);
+    });
+    let html = '';
+    buckets.forEach((list, gname)=>{
+      if(!list.length) return;
+      const th = groupThemeFor(gname);
+      html += `<div class="mgr-group-heading"><span style="width:10px;height:10px;border-radius:50%;background:${th.bg};border:1px solid ${th.borderColor};display:inline-block;"></span>${escapeHtml(gname)} <span class="cnt">${list.length} note${list.length===1?'':'s'}</span></div>`;
+      html += list.map(noteCardHtml).join('');
+    });
+    container.innerHTML = html || '<div class="mgr-empty">No stickies here.</div>';
+  } else {
+    container.innerHTML = rows.map(noteCardHtml).join('');
+  }
+
+  container.querySelectorAll('[data-sel]').forEach(cb=>cb.addEventListener('change', ()=>{
+    const id = cb.getAttribute('data-sel');
+    if(cb.checked) mgr.selected.add(id); else mgr.selected.delete(id);
+    updateMgrCount();
+  }));
+  container.querySelectorAll('.mgr-group-select').forEach(sel=>sel.addEventListener('change', (e)=>{
+    const id = sel.getAttribute('data-id');
+    const n = S.notes.find(x=>x.id===id);
+    if(!n || n.isLocked){ sel.value=n?.group||sel.value; return; }
+    n.group = sel.value; n.updatedAt = nowIso();
+    persistNotes(); renderNotes(); renderGroups(); renderManager();
+  }));
+  container.querySelectorAll('[data-act="open"]').forEach(btn=>btn.addEventListener('click', ()=>{
+    openNoteFromManager(btn.closest('.mgr-card').getAttribute('data-id'));
+  }));
+  container.querySelectorAll('[data-act="export"]').forEach(btn=>btn.addEventListener('click', ()=>{
+    const id = btn.closest('.mgr-card').getAttribute('data-id');
+    const n = S.notes.find(x=>x.id===id);
+    if(n) exportJSON({notes:[n]}, 'sticky_'+id);
+  }));
+  container.querySelectorAll('[data-act="delete"]').forEach(btn=>btn.addEventListener('click', ()=>{
+    const id = btn.closest('.mgr-card').getAttribute('data-id');
+    const n = S.notes.find(x=>x.id===id);
+    if(!n || n.isLocked) return;
+    n.isDeleted = true; n.updatedAt = nowIso();
+    persistNotes(); renderManager(); renderNotes(); renderGroups();
+  }));
+  container.querySelectorAll('[data-act="restore"]').forEach(btn=>btn.addEventListener('click', ()=>{
+    const id = btn.closest('.mgr-card').getAttribute('data-id');
+    const n = S.notes.find(x=>x.id===id);
+    if(!n) return;
+    n.isDeleted = false; n.updatedAt = nowIso();
+    persistNotes(); renderManager(); renderNotes(); renderGroups();
+    toast('Sticky restored');
+  }));
+  container.querySelectorAll('[data-act="purge"]').forEach(btn=>btn.addEventListener('click', ()=>{
+    const id = btn.closest('.mgr-card').getAttribute('data-id');
+    confirmDialog('Delete forever?', 'This sticky will be permanently removed.', ()=>{
+      S.notes = S.notes.filter(x=>x.id!==id);
+      persistNotes(); renderManager();
+    });
+  }));
+  updateMgrCount();
+}
+function updateMgrCount(){
+  const total = managerRows().length;
+  document.getElementById('mgr-count').textContent = mgr.selected.size+' of '+total+' selected';
+}
+function openNoteFromManager(id){
+  const note = S.notes.find(n=>n.id===id);
+  if(!note) return;
+  if(note.isDeleted){ toast('Restore this sticky from Trash first'); return; }
+  document.getElementById('manager-page').hidden = true;
+  S.groupFilter = 'ALL'; S.searchQuery = '';
+  const searchInput = document.getElementById('search-input'); if(searchInput) searchInput.value = '';
+  const grp = S.groups.find(g=>g.name===note.group);
+  if(grp && grp.isHidden){ grp.isHidden = false; persistGroups(); }
+  normalizeAllLayers();
+renderGroups(); renderNotes();
+  setTimeout(()=>{
+    const el = noteEls[note.id];
+    if(!el) return;
+    el.scrollIntoView({behavior:'smooth', block:'center', inline:'center'});
+  }, 50);
+}
+document.getElementById('mgr-select-all').addEventListener('change', (e)=>{
+  const rows = managerRows();
+  if(e.target.checked) rows.forEach(n=>mgr.selected.add(n.id)); else mgr.selected.clear();
+  renderManagerList();
+});
+document.getElementById('mgr-clear-sel').addEventListener('click', ()=>{ mgr.selected.clear(); renderManagerList(); });
+document.getElementById('mgr-search').addEventListener('input', (e)=>{ mgr.search = e.target.value; renderManagerList(); });
+document.getElementById('mgr-sort').addEventListener('change', (e)=>{ mgr.sort = e.target.value; renderManagerList(); });
+document.querySelectorAll('.mgr-view-btn').forEach(btn=>btn.addEventListener('click', ()=>{
+  mgr.view = btn.getAttribute('data-view');
+  document.querySelectorAll('.mgr-view-btn').forEach(b=>b.classList.remove('selected'));
+  btn.classList.add('selected');
+  renderManagerList();
+}));
+document.getElementById('mgr-new-sticky').addEventListener('click', ()=>{
+  document.getElementById('manager-page').hidden = true;
+  createNote({});
+});
+document.getElementById('mgr-move-btn').addEventListener('click', ()=>{
+  const g = document.getElementById('mgr-move-to').value;
+  if(!g || !mgr.selected.size) return;
+  S.notes.forEach(n=>{ if(mgr.selected.has(n.id) && !n.isLocked){ n.group=g; n.updatedAt=nowIso(); } });
+  persistNotes(); mgr.selected.clear(); renderManager(); renderNotes(); renderGroups();
+  toast('Moved to '+g);
+});
+document.getElementById('mgr-restore-btn').addEventListener('click', ()=>{
+  if(!mgr.selected.size) return;
+  S.notes.forEach(n=>{ if(mgr.selected.has(n.id) && !n.isLocked){ n.isDeleted=false; n.updatedAt=nowIso(); } });
+  persistNotes(); mgr.selected.clear(); renderManager(); renderNotes(); renderGroups();
+  toast('Restored');
+});
+document.getElementById('mgr-delete-btn').addEventListener('click', ()=>{
+  if(!mgr.selected.size) return;
+  const inTrash = mgr.groupFilter==='TRASH';
+  confirmDialog(inTrash?'Delete forever?':'Move to Trash?', mgr.selected.size+' sticky note(s) will be '+(inTrash?'permanently deleted.':'moved to Trash.'), ()=>{
+    if(inTrash) S.notes = S.notes.filter(n=>!(mgr.selected.has(n.id) && !n.isLocked));
+    else S.notes.forEach(n=>{ if(mgr.selected.has(n.id) && !n.isLocked){ n.isDeleted=true; n.updatedAt=nowIso(); } });
+    persistNotes(); mgr.selected.clear(); renderManager(); renderNotes(); renderGroups();
+  });
+});
+document.getElementById('mgr-export-selected').addEventListener('click', ()=>{
+  const list = mgr.selected.size ? S.notes.filter(n=>mgr.selected.has(n.id)) : managerRows();
+  exportJSON({notes:list}, 'stickies_selection');
+});
+document.getElementById('mgr-import').addEventListener('click', ()=>document.getElementById('file-import').click());
+document.getElementById('btn-manager').addEventListener('click', ()=>{ document.getElementById('manager-page').hidden=false; renderManager(); });
+document.getElementById('btn-manager-close').addEventListener('click', ()=>{ document.getElementById('manager-page').hidden=true; });
+
+/* ==================================================================
+   Export / Import
+   ================================================================== */
+function exportJSON(payload, filenameBase){
+  const data = 'data:text/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(payload,null,2));
+  const a = document.createElement('a');
+  a.setAttribute('href', data);
+  a.setAttribute('download', filenameBase+'_'+new Date().toISOString().slice(0,10)+'.json');
+  document.body.appendChild(a); a.click(); a.remove();
+}
+document.getElementById('btn-export').addEventListener('click', ()=>{
+  exportJSON({notes:S.notes.filter(n=>!n.isDeleted), groups:S.groups, settings:{...S.settings, googleClientId:S.settings.googleClientId}}, 'stickies_backup');
+});
+document.getElementById('btn-import').addEventListener('click', ()=>document.getElementById('file-import').click());
+document.getElementById('file-import').addEventListener('change', (e)=>{
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const data = JSON.parse(reader.result);
+      const incoming = Array.isArray(data) ? data : (data.notes||[]);
+      if(!incoming.length){ toast('No notes found in file'); return; }
+      confirmDialog('Import '+incoming.length+' note(s)?', 'Notes with the same ID will be updated only if the imported version is newer.', ()=>{
+        const map = new Map(S.notes.map(n=>[n.id,n]));
+        let importNextId = S.notes.reduce((m,n)=>Math.max(m, Number(n.displayId)||0), 0) + 1;
+        incoming.forEach(inc=>{
+          const local = map.get(inc.id);
+          if(!local){
+            inc = {...inc, displayId: importNextId++};
+            map.set(inc.id, inc);
+          }else if(new Date(inc.updatedAt||0) > new Date(local.updatedAt||0)){
+            inc = {...inc, displayId: local.displayId || importNextId++};
+            map.set(inc.id, inc);
+          }
+        });
+        S.notes = Array.from(map.values());
+        normalizeAllLayers();
+        if(data.groups && Array.isArray(data.groups)){
+          const gmap = new Map(S.groups.map(g=>[g.id,g]));
+          data.groups.forEach(g=>gmap.set(g.id,g));
+          S.groups = Array.from(gmap.values());
+        }
+        persistNotes(); persistGroups(); renderNotes(); renderGroups(); renderManager();
+        toast('Imported '+incoming.length+' note(s)');
+      });
+    }catch(err){ toast('Import failed: invalid JSON file'); }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+});
+
+/* ==================================================================
+   TOOLBAR wiring
+   ================================================================== */
+document.getElementById('btn-new-note').addEventListener('click', ()=>createNote({}));
+
+const newColorGrid = document.getElementById('new-color-grid');
+COLOR_ORDER.forEach(cid=>{
+  const sw = document.createElement('div');
+  sw.className = 'swatch'; sw.style.background = NOTE_COLORS[cid].bg; sw.style.borderColor = NOTE_COLORS[cid].borderColor;
+  sw.title = NOTE_COLORS[cid].name;
+  sw.addEventListener('click', ()=>{
+    createNote({color: cid});
+    document.getElementById('menu-new-color').classList.remove('open');
+  });
+  newColorGrid.appendChild(sw);
+});
+setupDropdown('btn-new-note-chevron','menu-new-color');
+
+const TEMPLATES = [
+  { name:'📝 Blank note', content:'' },
+  { name:'✅ To-do list', content:'To-Do\n\n🔲 First task\n🔲 Second task\n🔲 Third task' },
+  { name:'🗓️ Meeting notes', content:'Meeting: \nDate: \nAttendees: \n\nAgenda:\n- \n\nAction items:\n🔲 ' },
+  { name:'🛒 Shopping list', content:'Shopping List\n\n🔲 Item 1\n🔲 Item 2\n🔲 Item 3' },
+  { name:'💡 Quick idea', content:'💡 ' },
+];
+const templatesMenu = document.getElementById('menu-templates');
+templatesMenu.innerHTML = TEMPLATES.map((t,i)=>`<div class="tb-menu-item" data-t="${i}">${t.name}</div>`).join('');
+templatesMenu.querySelectorAll('[data-t]').forEach(item=>item.addEventListener('click', ()=>{
+  const t = TEMPLATES[item.getAttribute('data-t')];
+  createNote({ title:t.name.replace(/^\S+\s/,''), content:t.content });
+  closeAllToolbarMenus();
+}));
+
+function setupDropdown(btnId, menuId){
+  const btn = document.getElementById(btnId), menu = document.getElementById(menuId);
+  btn.addEventListener('click', (e)=>{
+    e.stopPropagation();
+    const wasOpen = menu.classList.contains('open');
+    closeAllToolbarMenus();
+    if(!wasOpen) menu.classList.add('open');
+  });
+}
+function closeAllToolbarMenus(){ document.querySelectorAll('.tb-menu.open').forEach(m=>m.classList.remove('open')); }
+document.addEventListener('click', closeAllToolbarMenus);
+setupDropdown('btn-templates','menu-templates');
+setupDropdown('btn-organize','menu-organize');
+
+document.getElementById('menu-organize').querySelectorAll('[data-organize]').forEach(item=>{
+  item.addEventListener('click', ()=>{ autoOrganize(item.getAttribute('data-organize')); closeAllToolbarMenus(); toast('Notes organized'); });
+});
+
+document.getElementById('btn-toggle-view').addEventListener('click', ()=>{
+  S.viewMode = S.viewMode==='desktop' ? 'grid' : 'desktop';
+  document.getElementById('view-mode-label').textContent = S.viewMode==='desktop' ? 'Desktop' : 'Grid';
+  document.getElementById('btn-toggle-view').classList.toggle('active', S.viewMode==='grid');
+  renderNotes();
+});
+document.getElementById('btn-snap').addEventListener('click', ()=>{
+  S.settings.snapToGrid = !S.settings.snapToGrid; persistSettings();
+  document.getElementById('btn-snap').classList.toggle('active', S.settings.snapToGrid);
+  resizeCanvas();
+});
+document.getElementById('btn-minimize-all').addEventListener('click', (e)=>{
+  const btn = e.currentTarget;
+  const isExpandMode = btn.getAttribute('data-mode') === 'expand';
+  if(isExpandMode){
+    // Minimize All already skips pinned notes, so Expand All must skip them
+    // too — otherwise a pinned note you minimized yourself would get force-
+    // expanded by this button, which is inconsistent (and surprising).
+    S.notes.forEach(n=>{ if(!n.isDeleted && !n.isLocked) n.isRolledUp = false; });
+    btn.setAttribute('data-mode', 'minimize');
+    btn.innerHTML = '▬ Minimize All';
+  } else {
+    S.notes.forEach(n=>{ if(!n.isDeleted && !n.isLocked) n.isRolledUp = true; });
+    btn.setAttribute('data-mode', 'expand');
+    btn.innerHTML = '⬒ Expand All';
+  }
+  persistNotes(); renderNotes();
+});
+document.getElementById('btn-add-group-sb').addEventListener('click', ()=>{
+  const row = document.getElementById('sb-newgroup-row');
+  if(row.querySelector('input')){ row.querySelector('input').focus(); return; }
+  row.innerHTML = `
+    <div style="padding:8px 10px 12px;">
+      <label style="display:block; font-size:11px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px;">New Group Name</label>
+      <div style="display:flex; gap:6px;">
+        <input type="text" id="sb-newgroup-input" placeholder="e.g. Finances, Goals" style="flex:1; min-width:0; padding:7px 9px; border:1.5px solid #FACC15; border-radius:8px; font-size:13px;">
+        <button id="sb-newgroup-ok" style="background:#F59E0B; border:none; color:#fff; width:30px; border-radius:8px; font-size:14px;">✓</button>
+        <button id="sb-newgroup-cancel" style="background:#F1F5F9; border:none; color:#64748B; width:30px; border-radius:8px; font-size:14px;">✕</button>
+      </div>
+    </div>`;
+  const input = document.getElementById('sb-newgroup-input');
+  input.focus();
+  function commit(){
+    const name = input.value.trim();
+    row.innerHTML = '';
+    if(!name) return;
+    const colors = COLOR_ORDER;
+    const g = { id: uid('group'), name, color: colors[S.groups.length % colors.length] };
+    S.groups.push(g); persistGroups(); renderGroups();
+  }
+  function cancel(){ row.innerHTML = ''; }
+  document.getElementById('sb-newgroup-ok').addEventListener('click', commit);
+  document.getElementById('sb-newgroup-cancel').addEventListener('click', cancel);
+  input.addEventListener('keydown', (e)=>{
+    if(e.key==='Enter'){ e.preventDefault(); commit(); }
+    else if(e.key==='Escape'){ cancel(); }
+  });
+});
+
+const LS_SIDEBAR = 'stickies_sidebar_collapsed_v1';
+function setSidebarCollapsed(collapsed){
+  document.getElementById('sidebar').classList.toggle('collapsed', collapsed);
+  document.getElementById('btn-expand-sidebar').hidden = !collapsed;
+  try{ localStorage.setItem(LS_SIDEBAR, collapsed ? '1' : '0'); }catch(e){}
+}
+document.getElementById('btn-collapse-sidebar').addEventListener('click', ()=>setSidebarCollapsed(true));
+document.getElementById('btn-expand-sidebar').addEventListener('click', ()=>setSidebarCollapsed(false));
+setSidebarCollapsed(localStorage.getItem(LS_SIDEBAR) === '1');
+
+let searchTimer = null;
+document.getElementById('search-input').addEventListener('input', (e)=>{
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(()=>{ S.searchQuery = e.target.value.trim(); renderNotes(); renderGroups(); }, 150);
+});
+
+/* ==================================================================
+   Google Drive sync (Google Identity Services, direct-to-Drive, drive.file scope)
+   ================================================================== */
+function setSyncUI(status, label){
+  document.getElementById('sync-dot').className = 'sync-dot'+(status?(' '+status):'');
+  if(label) document.getElementById('sync-label').textContent = label;
+}
+function loadGisScript(){
+  return new Promise((resolve,reject)=>{
+    if(window.google && window.google.accounts){ resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
+    s.onload = resolve; s.onerror = ()=>reject(new Error('Could not load Google Identity Services (are you offline?)'));
+    document.head.appendChild(s);
+  });
+}
+async function driveRequest(url, opts, token){
+  const res = await fetch(url, { ...opts, headers: { ...(opts&&opts.headers), Authorization: 'Bearer '+token } });
+  if(!res.ok){ const e = await res.json().catch(()=>({})); throw new Error((e.error&&e.error.message)||('Drive request failed ('+res.status+')')); }
+  return res;
+}
+const DRIVE_FILE_NAME = 'stickies-notes-data.json';
+async function findDriveFile(token){
+  const q = encodeURIComponent(`name = '${DRIVE_FILE_NAME}' and trashed = false`);
+  const res = await driveRequest(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&spaces=drive`, {}, token);
+  const data = await res.json();
+  return (data.files && data.files[0]) ? data.files[0].id : null;
+}
+async function downloadDriveNotes(token, fileId){
+  const res = await driveRequest(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {}, token);
+  const d = await res.json(); return Array.isArray(d) ? d : (d.notes||[]);
+}
+async function uploadDriveNotes(token, notes, existingFileId){
+  const boundary='-------314159265358979323846';
+  const meta = { name:DRIVE_FILE_NAME, mimeType:'application/json' };
+  const body = `\r\n--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(notes,null,2)}\r\n--${boundary}--`;
+  const url = existingFileId
+    ? `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=multipart`
+    : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+  const res = await driveRequest(url, { method: existingFileId?'PATCH':'POST', headers:{'Content-Type':`multipart/related; boundary=${boundary}`}, body }, token);
+  const d = await res.json(); return d.id || existingFileId;
+}
+function mergeNotesByTime(local, remote){
+  const map = new Map(local.map(n=>[n.id,n]));
+  remote.forEach(r=>{
+    const l = map.get(r.id);
+    if(!l) map.set(r.id, r);
+    else if(new Date(r.updatedAt||0) > new Date(l.updatedAt||0)) map.set(r.id, r);
+  });
+  return Array.from(map.values());
+}
+async function doSync(){
+  const clientId = STICKIES_GOOGLE_CLIENT_ID;
+  if(!navigator.onLine){ toast('You are offline'); return; }
+  try{
+    setSyncUI('syncing','Syncing…');
+    await loadGisScript();
+    const token = await new Promise((resolve,reject)=>{
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: clientId, scope: 'https://www.googleapis.com/auth/drive.file',
+        callback: (resp)=> resp.access_token ? resolve(resp.access_token) : reject(new Error('No access token')),
+        error_callback: (err)=>reject(new Error(err.type||'Sign-in cancelled')),
+      });
+      client.requestAccessToken();
+    });
+    let fileId = S.sync.fileId || await findDriveFile(token);
+    let remote = fileId ? await downloadDriveNotes(token, fileId) : [];
+    const merged = mergeNotesByTime(S.notes, remote);
+    S.notes = merged; persistNotes(); renderNotes(); renderGroups();
+    fileId = await uploadDriveNotes(token, merged, fileId);
+    S.sync = { status:'synced', lastSyncedAt: nowIso(), fileId };
+    saveSyncInfo(S.sync);
+    setSyncUI('synced', 'Synced '+new Date().toLocaleTimeString());
+    toast('Synced with Google Drive ✓');
+  }catch(err){
+    console.error(err);
+    S.sync.status='error'; saveSyncInfo(S.sync);
+    setSyncUI('error','Sync failed');
+    toast('Sync failed: '+err.message);
+  }
+}
+document.getElementById('btn-sync').addEventListener('click', doSync);
+if(S.sync.status==='synced' && S.sync.lastSyncedAt){ setSyncUI('synced', 'Synced '+new Date(S.sync.lastSyncedAt).toLocaleTimeString()); }
+
+/* ==================================================================
+   PWA install prompt + offline indicator + service worker
+   ================================================================== */
+let deferredInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e)=>{
+  e.preventDefault(); deferredInstallPrompt = e;
+  if(!isStandalone()) document.getElementById('install-banner').hidden = false;
+});
+function isStandalone(){
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+function isIOS(){ return /iphone|ipad|ipod/i.test(navigator.userAgent); }
+document.getElementById('btn-do-install').addEventListener('click', async ()=>{
+  if(deferredInstallPrompt){
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    document.getElementById('install-banner').hidden = true;
+  } else if(isIOS()){
+    alert('To install: tap the Share icon in Safari, then "Add to Home Screen".');
+  }
+});
+document.getElementById('btn-dismiss-install').addEventListener('click', ()=>{ document.getElementById('install-banner').hidden = true; });
+if(isIOS() && !isStandalone()){ document.getElementById('install-banner').hidden = false; }
+
+function updateOfflineIndicator(){ document.getElementById('offline-indicator').hidden = navigator.onLine; }
+window.addEventListener('online', updateOfflineIndicator);
+window.addEventListener('offline', updateOfflineIndicator);
+updateOfflineIndicator();
+
+/* ==================================================================
+   PWA UPDATE NOTIFICATION + MANUAL UPDATE CHECK
+   Mirrors the PET update flow: a new service worker is detected,
+   the user is notified, and Update activates it then reloads once.
+   ================================================================== */
+(function(){
+  'use strict';
+  if(!('serviceWorker' in navigator)) return;
+
+  const notice=document.getElementById('stkUpdateNotice');
+  const updateNow=document.getElementById('stkUpdateNow');
+  const updateLater=document.getElementById('stkUpdateLater');
+  let registration=null;
+  let waitingWorker=null;
+
+  function showUpdateNotice(worker){
+    waitingWorker=worker||waitingWorker;
+    if(notice) notice.classList.add('is-visible');
+  }
+  function hideUpdateNotice(){
+    if(notice) notice.classList.remove('is-visible');
+  }
+  function getCheckBtn(){ return document.getElementById('stkCheckUpdateBtn'); }
+  function getCheckStatus(){ return document.getElementById('stkUpdateCheckStatus'); }
+  function getCheckLabel(){
+    const btn=getCheckBtn();
+    return btn ? btn.querySelector('.stk-check-label') : null;
+  }
+  function setCheckStatus(message){
+    const el=getCheckStatus();
+    if(el) el.textContent=message;
+  }
+
+  async function checkForUpdate(manual){
+    if(!registration){
+      if(manual) setCheckStatus('Update check is not ready yet.');
+      return;
+    }
+    const checkBtn=getCheckBtn();
+    if(checkBtn){
+      checkBtn.classList.add('is-checking');
+      const checkLabel=getCheckLabel();
+      if(checkLabel) checkLabel.textContent='Checking…';
+    }
+    setCheckStatus('');
+    try{
+      await registration.update();
+      if(registration.waiting){
+        showUpdateNotice(registration.waiting);
+        setCheckStatus('A new version is ready to install.');
+      }else if(manual){
+        setCheckStatus("You're using the latest version of Stickies.");
+      }
+    }catch(error){
+      console.warn('Stickies update check failed:',error);
+      if(manual) setCheckStatus('Could not check for updates. Please try again.');
+    }finally{
+      const btn=getCheckBtn();
+      if(btn){
+        btn.classList.remove('is-checking');
+        const label=getCheckLabel();
+        if(label) label.textContent='Check for updates';
+      }
+    }
+  }
+
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('./service-worker.js')
+      .then(reg=>{
+        registration=reg;
+        if(registration.waiting) showUpdateNotice(registration.waiting);
+        registration.addEventListener('updatefound',()=>{
+          const newWorker=registration.installing;
+          if(!newWorker) return;
+          newWorker.addEventListener('statechange',()=>{
+            if(newWorker.state==='installed' && navigator.serviceWorker.controller){
+              showUpdateNotice(newWorker);
+            }
+          });
+        });
+        // Check automatically when Stickies opens.
+        checkForUpdate(false);
+      })
+      .catch(error=>{
+        console.warn('Stickies service worker registration failed:',error);
+        if(checkStatus) setCheckStatus('Update service unavailable.');
+      });
+  });
+
+  // About content is rendered dynamically, so use delegated handling for the button.
+  document.addEventListener('click',(event)=>{
+    if(event.target.closest && event.target.closest('#stkCheckUpdateBtn')){
+      event.preventDefault();
+      checkForUpdate(true);
+    }
+  });
+  if(updateNow) updateNow.addEventListener('click',()=>{
+    if(waitingWorker) waitingWorker.postMessage({type:'SKIP_WAITING'});
+    else if(registration && registration.waiting) registration.waiting.postMessage({type:'SKIP_WAITING'});
+    hideUpdateNotice();
+  });
+  if(updateLater) updateLater.addEventListener('click',hideUpdateNotice);
+
+  let refreshing=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(refreshing) return;
+    refreshing=true;
+    window.location.reload();
+  });
+})();
+
+/* ==================================================================
+   INIT
+   ================================================================== */
+function init(){
+  normalizeAllLayers();
+  renderGroups();
+  renderNotes();
+  updateTrashBadge();
+  document.getElementById('btn-snap').classList.toggle('active', S.settings.snapToGrid);
+  window.addEventListener('resize', resizeCanvas);
+}
+init();
+</script>
+</body>
+</html>

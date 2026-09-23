@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — Stickies</title>
+<style>
+  body{font-family:system-ui,-apple-system,sans-serif;max-width:680px;margin:40px auto;padding:0 20px;line-height:1.6;color:#1E293B;}
+  h1{font-size:26px;} h2{font-size:18px;margin-top:32px;}
+  a{color:#CA8A04;}
+  .back{display:inline-block;margin-bottom:24px;font-size:14px;}
+  code{background:#F1F5F9;padding:2px 6px;border-radius:4px;font-size:13px;}
+</style>
+</head>
+<body>
+  <a class="back" href="index.html">← Back to Stickies</a>
+  <h1>📌 Privacy Policy</h1>
+  <p><em>Last updated: 2026</em></p>
+
+  <p><strong>Short version: this app runs entirely on your device. There is no server, no account system, no analytics, and no tracking.</strong></p>
+
+  <h2>What data this app stores</h2>
+  <p>All of your sticky notes, groups, and settings are stored in your browser's local storage (<code>localStorage</code>), on your own device. Nothing is ever sent to any server operated by the developer of this app.</p>
+
+  <h2>Google Drive sync (optional, off by default)</h2>
+  <p>If you choose to enter your own Google OAuth Client ID in Settings and tap "Sync with Google Drive," this app will ask Google to authenticate you and will then read and write a single file
+  (<code>stickies-notes-data.json</code>) directly to <strong>your own</strong> Google Drive, using Google's official APIs, from your browser. This uses the restricted <code>drive.file</code> scope, meaning the app can only see the one file it creates — never the rest of your Drive.
+  No third-party server — including any server operated by the developer of this app — ever sees your notes. If you never set up a Client ID or never tap "Sync," this feature is never used and no network request related to it is ever made.</p>
+
+  <h2>Offline behavior</h2>
+  <p>Once installed as a Progressive Web App (PWA), this app is precached by a service worker and works fully offline. After installation, it does not contact GitHub, GitHub Pages, or any hosting server during normal use — it only loads from the copy cached on your device, and only talks to Google if you explicitly trigger a Drive sync.</p>
+
+  <h2>No cookies, no analytics, no ads</h2>
+  <p>This app sets no cookies and includes no analytics, tracking pixels, or advertising code of any kind.</p>
+
+  <h2>Your data, your control</h2>
+  <p>You can export a full JSON backup of your notes at any time from the toolbar, and you can clear all locally stored data from Settings → Reset App Data. Because everything lives in your browser, uninstalling the app or clearing your browser's site data for this page removes all stored notes permanently (export a backup first if you want to keep them).</p>
+
+  <h2>Self-hosting</h2>
+  <p>This app is open source (MIT licensed). If you've deployed your own copy from a fork of the repository, this same policy applies to your deployment: your notes stay on your visitors' own devices and, optionally, sync only to their own Google Drive.</p>
+
+  <h2>Questions</h2>
+  <p>This project has no company behind it and collects no contact or usage data from you. For questions about the source code, see the project's <a href="README.md">README</a> or its GitHub repository.</p>
+</body>
+</html>
