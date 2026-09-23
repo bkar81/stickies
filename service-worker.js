@@ -1,134 +1,136 @@
-// Stickies - service worker
-// Precaches the app shell so it works fully offline after the first visit.
-// A newly published service worker waits until the user explicitly chooses
-// "Update" from the Stickies update notification.
+// Stickies Service Worker
+// Version: v1.0.0
+// Handles offline caching and detects new Stickies HTML versions.
 
-const CACHE_VERSION = 'stickies-cache-v1.0.0';
+const CACHE_NAME = "stickies-cache-v1.0.0";
 
-const APP_SHELL = [
-  './',
-  './index.html',
-  './manifest.json',
-  './privacy.html',
-  './pwa-192x192.png',
-  './pwa-512x512.png',
-  './pwa-maskable-512x512.png',
-  './apple-touch-icon.png',
-  './favicon.png'
+const ASSETS = [
+  "./",
+  "./index.html",
+  "./manifest.json",
+  "./icon.png"
 ];
 
-
-// ------------------------------------------------------------
+// ============================================================
 // INSTALL
-// ------------------------------------------------------------
-// IMPORTANT:
-// Do NOT call self.skipWaiting() here.
-//
-// This allows the new service worker to remain in the "waiting"
-// state. Stickies/index.html can detect that waiting worker and
-// show:
-//
-//   New version available
-//   Later | Update
-//
-// Only after the user chooses Update do we receive SKIP_WAITING.
-self.addEventListener('install', (event) => {
+// ============================================================
+
+self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_VERSION)
-      .then((cache) => cache.addAll(APP_SHELL))
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(ASSETS))
+      .then(() => self.skipWaiting())
   );
 });
 
-
-// ------------------------------------------------------------
+// ============================================================
 // ACTIVATE
-// ------------------------------------------------------------
-// Remove caches belonging to older Stickies versions and then
-// take control of the application.
-self.addEventListener('activate', (event) => {
+// ============================================================
+
+self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) =>
-        Promise.all(
-          keys
-            .filter((key) => key !== CACHE_VERSION)
-            .map((key) => caches.delete(key))
-        )
-      )
+      .then((cacheNames) => Promise.all(
+        cacheNames
+          .filter((cacheName) => cacheName !== CACHE_NAME)
+          .map((cacheName) => caches.delete(cacheName))
+      ))
       .then(() => self.clients.claim())
   );
 });
 
+// ============================================================
+// UPDATE BUTTON SUPPORT
+// ============================================================
 
-// ------------------------------------------------------------
-// UPDATE CONTROL
-// ------------------------------------------------------------
-// index.html sends this message ONLY when the user clicks
-// "Update" in the update notification.
-self.addEventListener('message', (event) => {
-  if (
-    event.data &&
-    event.data.type === 'SKIP_WAITING'
-  ) {
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
     self.skipWaiting();
   }
 });
 
-
-// ------------------------------------------------------------
+// ============================================================
 // FETCH
-// ------------------------------------------------------------
-// Preserve the original Stickies behavior:
-//
-// - Same-origin app files can be cached for offline use.
-// - Cross-origin requests are never intercepted.
-// - Google Drive / Google Identity / Google API requests
-//   therefore continue directly to the network.
-// ------------------------------------------------------------
-self.addEventListener('fetch', (event) => {
-  const req = event.request;
+// ============================================================
 
-  if (req.method !== 'GET') return;
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
 
-  const url = new URL(req.url);
-  const isSameOrigin = url.origin === self.location.origin;
+  // Do NOT intercept Google services.
+  if (
+    url.hostname.endsWith("googleapis.com") ||
+    url.hostname.endsWith("google.com")
+  ) {
+    return;
+  }
 
-  // Never intercept cross-origin requests.
-  // This is important for Google Drive and Google Identity/API calls.
-  if (!isSameOrigin) {
+  // Only handle GET requests.
+  if (event.request.method !== "GET") {
     return;
   }
 
   event.respondWith(
-    caches.match(req)
-      .then((cached) => {
+    caches.match(event.request)
+      .then((cachedResponse) => {
 
-        // Existing cached app-shell/resource.
-        if (cached) {
-          return cached;
+        // ----------------------------------------------------
+        // STICKIES APP SHELL
+        //
+        // Network first -> update cache -> return fresh HTML.
+        // If offline, use the cached HTML.
+        //
+        // This means index.html can change without changing
+        // CACHE_NAME/version numbers.
+        // ----------------------------------------------------
+
+        const isAppShell =
+          url.pathname.endsWith("/index.html") ||
+          url.pathname.endsWith("/") ||
+          url.pathname.endsWith("/stickies");
+
+        if (isAppShell) {
+          return fetch(event.request)
+            .then((networkResponse) => {
+              if (
+                networkResponse &&
+                networkResponse.status === 200
+              ) {
+                const responseClone = networkResponse.clone();
+
+                caches.open(CACHE_NAME)
+                  .then((cache) => {
+                    cache.put(event.request, responseClone);
+                  });
+              }
+
+              return networkResponse;
+            })
+            .catch(() => cachedResponse);
         }
 
-        // Not cached yet — get it from the network and cache it.
-        return fetch(req)
-          .then((res) => {
+        // ----------------------------------------------------
+        // OTHER STICKIES RESOURCES
+        // ----------------------------------------------------
 
-            if (!res || res.status !== 200) {
-              return res;
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+
+        return fetch(event.request)
+          .then((networkResponse) => {
+            if (
+              networkResponse &&
+              networkResponse.status === 200
+            ) {
+              const responseClone = networkResponse.clone();
+
+              caches.open(CACHE_NAME)
+                .then((cache) => {
+                  cache.put(event.request, responseClone);
+                });
             }
 
-            const resClone = res.clone();
-
-            caches.open(CACHE_VERSION)
-              .then((cache) => {
-                cache.put(req, resClone);
-              });
-
-            return res;
-          })
-          .catch(() => {
-            // If the requested page cannot be fetched while offline,
-            // fall back to the main Stickies application.
-            return caches.match('./index.html');
+            return networkResponse;
           });
       })
   );
