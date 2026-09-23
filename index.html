@@ -3244,17 +3244,39 @@ function renderAboutModal(){
 
   const shareBtn = document.getElementById('shareStickiesBtn');
   if(shareBtn){
-    shareBtn.addEventListener('click', async ()=>{
+    shareBtn.addEventListener('click', async (event)=>{
+      event.preventDefault();
+      event.stopPropagation();
+
       const shareData = {
         title:'Stickies',
         text:'Try Stickies — a simple, private and offline-first sticky notes app.',
         url:'https://bkar81.github.io/stickies/'
       };
+
       try{
-        if(navigator.share) await navigator.share(shareData);
-        else if(navigator.clipboard && window.isSecureContext){ await navigator.clipboard.writeText(shareData.url); toast('Stickies app link copied.'); }
-        else window.prompt('Copy the Stickies app link:', shareData.url);
-      }catch(err){ if(!err || err.name!=='AbortError') console.error('Unable to share Stickies:', err); }
+        if(navigator.share){
+          await navigator.share(shareData);
+          return;
+        }
+      }catch(err){
+        // User cancellation is normal. For other share failures,
+        // continue to the clipboard/fallback path below.
+        if(err && err.name==='AbortError') return;
+        console.warn('Native Share unavailable, using fallback:',err);
+      }
+
+      try{
+        if(navigator.clipboard && window.isSecureContext){
+          await navigator.clipboard.writeText(shareData.url);
+          toast('Stickies app link copied.');
+          return;
+        }
+      }catch(err){
+        console.warn('Clipboard share fallback failed:',err);
+      }
+
+      window.prompt('Copy the Stickies app link:', shareData.url);
     });
   }
 }
