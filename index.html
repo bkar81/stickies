@@ -798,17 +798,17 @@ function sampleNotes(){
     { id:'sample-welcome', displayId:1, title:'📌 Welcome to Stickies!',
       content:'Welcome to Stickies! 👋\n\n- Drag notes anywhere across the desktop canvas\n- Drop one near another and it aligns without overlapping\n- Click the header ▲ to minimize a note to its title bar\n- Adjust transparency to see through stickies\n- Customize font family & size\n- Type [] for a 🔲 checklist box, click it to tick ☑️',
       color:'yellow', customColor:null, opacity:1, group:'General', x:15, y:15, width:390, height:270,
-      zIndex:10, isPinned:true, isRolledUp:false, isLocked:true, isDeleted:false, tags:['Guide','Welcome'],
+      zIndex:10, isPinned:true, isRolledUp:false, isLocked:false, isDeleted:false, tags:['Guide','Welcome'],
       fontFamily:'sans', fontSize:'base', createdAt:t, updatedAt:t },
     { id:'sample-drive-sync', displayId:2, title:'☁️ Google Drive Sync & Offline',
       content:'Notes can sync to your own personal Google Drive.\n\n1. Open Settings and connect your Google account\n2. Click "Sync with Google Drive" in the top bar\n3. Notes merge and stay in sync across devices\n4. 100% offline support via LocalStorage + installable PWA\n5. Infinite scrollable canvas for unlimited stickies!',
       color:'blue', customColor:null, opacity:0.95, group:'Work', x:415, y:15, width:385, height:270,
-      zIndex:9, isPinned:false, isRolledUp:false, isLocked:true, isDeleted:false, tags:['Google Drive','Sync'],
+      zIndex:9, isPinned:false, isRolledUp:false, isLocked:false, isDeleted:false, tags:['Google Drive','Sync'],
       fontFamily:'sans', fontSize:'base', createdAt:t, updatedAt:t },
     { id:'sample-todo', displayId:3, title:'✅ Features Checklist',
       content:'☑️ Unlimited scrollable canvas\n☑️ Minimize to title & restore back\n☑️ Transparency slider support\n☑️ Common font family selections\n🔲 Type [] to create checklist box\n🔲 Click on 🔲 to toggle it to ☑️\n🔲 Press Enter for next checklist item\n☑️ Auto-organize notes',
       color:'green', customColor:null, opacity:0.92, group:'Personal', x:805, y:15, width:320, height:270,
-      zIndex:8, isPinned:false, isRolledUp:false, isLocked:true, isDeleted:false, tags:['Tasks','Checklist'],
+      zIndex:8, isPinned:false, isRolledUp:false, isLocked:false, isDeleted:false, tags:['Tasks','Checklist'],
       fontFamily:'handwriting', fontSize:'base', createdAt:t, updatedAt:t },
   ];
 }
@@ -837,6 +837,7 @@ function loadNotes(){
       fontFamily: n.fontFamily || 'sans',
       fontSize: n.fontSize || 'base',
       isRolledUp: !!n.isRolledUp,
+      isLocked: !!n.isLocked,
       tags: Array.isArray(n.tags) ? n.tags : [],
     }));
   }catch(e){ return sampleNotes(); }
@@ -1674,6 +1675,12 @@ function buildNoteEl(note){
     lockPointerHandledUntil=Date.now()+600;
     toggleStickyLock(e);
   });
+  lockBtn.addEventListener('touchend', e=>{
+    e.stopPropagation();
+    if(Date.now()<lockPointerHandledUntil) return;
+    lockPointerHandledUntil=Date.now()+600;
+    toggleStickyLock(e);
+  }, {passive:false});
   lockBtn.addEventListener('click', e=>{
     if(Date.now()<lockPointerHandledUntil){ e.stopPropagation(); return; }
     toggleStickyLock(e);
