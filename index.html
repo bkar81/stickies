@@ -618,13 +618,13 @@ input,select,textarea{font-family:inherit;}
         <b>Groups</b>
         <div style="display:flex; gap:4px;">
           <button id="btn-add-group-sb" title="New group">➕</button>
-          <button id="btn-collapse-sidebar" title="Collapse panel">⮜</button>
+          <button id="btn-collapse-sidebar" title="Collapse panel" aria-label="Collapse Groups panel"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" style="display:block;margin:auto;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;pointer-events:none;"><path d="M15 18L9 12L15 6"></path></svg></button>
         </div>
       </div>
       <div id="sb-newgroup-row"></div>
       <div id="sb-list"></div>
     </div>
-    <button id="btn-expand-sidebar" title="Show Groups panel" aria-label="Show Groups panel" hidden>⮞</button>
+    <button id="btn-expand-sidebar" title="Show Groups panel" aria-label="Show Groups panel" hidden><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" style="display:block;margin:auto;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;pointer-events:none;"><path d="M9 18L15 12L9 6"></path></svg></button>
     <div id="canvas-wrap">
       <div id="canvas">
         <div id="notes-layer"></div>
@@ -735,11 +735,11 @@ input,select,textarea{font-family:inherit;}
     <div class="mgr-side">
       <div class="sb-head">
         <b>Desktop Groups</b>
-        <button id="mgr-collapse-groups" title="Collapse Groups panel" aria-label="Collapse Groups panel">⮜</button>
+        <button id="mgr-collapse-groups" title="Collapse Groups panel" aria-label="Collapse Groups panel"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" style="display:block;margin:auto;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;pointer-events:none;"><path d="M15 18L9 12L15 6"></path></svg></button>
       </div>
       <div id="mgr-side"></div>
     </div>
-    <button id="mgr-expand-groups" title="Show Groups panel" aria-label="Show Groups panel">⮞</button>
+    <button id="mgr-expand-groups" title="Show Groups panel" aria-label="Show Groups panel"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" style="display:block;margin:auto;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;pointer-events:none;"><path d="M9 18L15 12L9 6"></path></svg></button>
     <div class="mgr-main">
       <div class="mgr-searchbar">
         <input class="tb-input" id="mgr-search" placeholder="🔍 Search in all stickies (title, text, tags)...">
@@ -879,7 +879,7 @@ function sampleNotes(){
   const t = nowIso();
   return [
     { id:'sample-welcome', displayId:1, title:'📌 Welcome to Stickies!',
-      content:'Welcome to Stickies! 👋\n\n- Drag notes anywhere across the desktop canvas\n- Drop one near another and it aligns without overlapping\n- Click the header ⮝ to minimize a note to its title bar\n- Adjust transparency to see through stickies\n- Customize font family & size\n- Type [] for a 🔲 checklist box, click it to tick ☑️',
+      content:'Welcome to Stickies! 👋\n\n- Drag notes anywhere across the desktop canvas\n- Drop one near another and it aligns without overlapping\n- Click the header expand/collapse control to minimize a sticky to its title bar\n- Adjust transparency to see through stickies\n- Customize font family & size\n- Type [] for a 🔲 checklist box, click it to tick ☑️',
       color:'yellow', customColor:null, opacity:1, group:'General', x:15, y:15, width:390, height:270,
       zIndex:10, isPinned:true, isRolledUp:false, isLocked:false, isDeleted:false, tags:['Guide','Welcome'],
       fontFamily:'sans', fontSize:'base', createdAt:t, updatedAt:t },
@@ -1595,7 +1595,7 @@ function buildNoteEl(note){
       <button class="hbtn settings-btn" data-act="settings" title="Sticky actions">⚙️</button>
       <button class="hbtn" data-act="pin" title="${note.isPinned?'Pinned — always on top within the pinned stack. Click to unpin.':'Pin — keep above all unpinned stickies'}">${note.isPinned?'📌':'📍'}</button>
       <button class="hbtn" data-act="lock" title="${note.isLocked?'Unlock sticky':'Lock sticky'}">${note.isLocked?'🔒':'🔓'}</button>
-      <button class="hbtn" data-act="rollup" title="${note.isRolledUp?'Expand':'Minimize'}" aria-label="${note.isRolledUp?'Expand':'Minimize'}">${note.isRolledUp?'⮟':'⮝'}</button>
+      <button class="hbtn" data-act="rollup" title="${note.isRolledUp?'Expand':'Minimize'}" aria-label="${note.isRolledUp?'Expand':'Minimize'}"><svg class="rollup-icon" aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" style="display:block;margin:auto;fill:none;stroke:currentColor;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;pointer-events:none;"><path d="${note.isRolledUp?'M6 9L12 15L18 9':'M6 15L12 9L18 15'}"></path></svg></button>
       <button class="hbtn date-icon" data-act="date-icon" title="Sticky information" aria-label="Sticky information">💡</button>
       <button class="hbtn" data-act="close" title="Delete">❌</button>
     </div>
@@ -1767,9 +1767,9 @@ function buildNoteEl(note){
     if(note.isLocked){ e.preventDefault(); e.stopPropagation(); return; }
     note.isRolledUp = !note.isRolledUp; note.updatedAt=nowIso(); persistNotes();
     el.classList.toggle('rolled-up', note.isRolledUp);
-    e.target.textContent = note.isRolledUp?'⮟':'⮝';
-    e.target.title = note.isRolledUp ? 'Expand' : 'Minimize';
-    e.target.setAttribute('aria-label', note.isRolledUp ? 'Expand' : 'Minimize');
+    e.currentTarget.querySelector('path').setAttribute('d', note.isRolledUp?'M6 9L12 15L18 9':'M6 15L12 9L18 15');
+    e.currentTarget.title = note.isRolledUp ? 'Expand' : 'Minimize';
+    e.currentTarget.setAttribute('aria-label', note.isRolledUp ? 'Expand' : 'Minimize');
     if(!note.isRolledUp) el.style.height = note.height+'px'; else el.style.height='';
     resizeCanvas();
     refreshInfoTooltip();
@@ -3215,7 +3215,7 @@ function renderAboutModal(){
       <div class="about-card"><span class="emoji">✍️</span><b>Rich text</b><small>Bold, italic, underline, strikethrough, bullets and numbering with visual Markdown-style list behavior.</small></div>
       <div class="about-card"><span class="emoji">☑️</span><b>Checklists</b><small>Type <code>[]</code> or <code>[x]</code> at the start of a line for a clickable checklist box.</small></div>
       <div class="about-card"><span class="emoji">🔍</span><b>Search & highlight</b><small>Search across titles, content, tags, and groups.</small></div>
-      <div class="about-card"><span class="emoji">📁</span><b>Groups sidebar</b><small>The Groups sidebar can be toggled with ⮜ to hide it and ⮞ to show it again, giving more space for your stickies.</small></div>
+      <div class="about-card"><span class="emoji">📁</span><b>Groups sidebar</b><small>The Groups sidebar can be toggled to hide or show it, giving more space for your stickies.</small></div>
       <div class="about-card"><span class="emoji">🧹</span><b>Auto-organize</b><small>Tile, cascade, compact, or cluster notes.</small></div>
       <div class="about-card"><span class="emoji">🗒️</span><b>Sticky Manager</b><small>Manage, move, delete, export, import, and edit stickies in bulk.</small></div>
       <div class="about-card"><span class="emoji">🗑️</span><b>Trash</b><small>Deleted stickies remain recoverable until permanently removed.</small></div>
