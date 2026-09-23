@@ -837,7 +837,6 @@ function loadNotes(){
       fontFamily: n.fontFamily || 'sans',
       fontSize: n.fontSize || 'base',
       isRolledUp: !!n.isRolledUp,
-      isLocked: !!n.isLocked,
       tags: Array.isArray(n.tags) ? n.tags : [],
     }));
   }catch(e){ return sampleNotes(); }
@@ -1669,20 +1668,11 @@ function buildNoteEl(note){
     el.classList.toggle('locked', note.isLocked);
     refreshInfoTooltip();
   }
-  lockBtn.addEventListener('pointerdown', e=>e.stopPropagation());
-  lockBtn.addEventListener('pointerup', e=>{
-    e.stopPropagation();
-    lockPointerHandledUntil=Date.now()+600;
-    toggleStickyLock(e);
-  });
-  lockBtn.addEventListener('touchend', e=>{
-    e.stopPropagation();
-    if(Date.now()<lockPointerHandledUntil) return;
-    lockPointerHandledUntil=Date.now()+600;
-    toggleStickyLock(e);
-  }, {passive:false});
+  // Use the same click interaction as the other header controls.
+  // touch-action: manipulation lets mobile browsers generate the click normally.
   lockBtn.addEventListener('click', e=>{
-    if(Date.now()<lockPointerHandledUntil){ e.stopPropagation(); return; }
+    e.preventDefault();
+    e.stopPropagation();
     toggleStickyLock(e);
   });
   el.querySelector('[data-act="rollup"]').addEventListener('click', (e)=>{
