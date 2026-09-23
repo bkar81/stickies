@@ -936,8 +936,12 @@ function loadSettings(){
 function saveSettings(s){ try{ localStorage.setItem(LS_SETTINGS, JSON.stringify(s)); }catch(e){ console.error(e); } }
 
 function loadSyncInfo(){
-  try{ const raw=localStorage.getItem(LS_SYNC); return raw? JSON.parse(raw) : {status:'idle', lastSyncedAt:null, fileId:null}; }
-  catch(e){ return {status:'idle', lastSyncedAt:null, fileId:null}; }
+  const defaults = {status:'idle', lastSyncedAt:null, fileId:null, wasConnected:false};
+  try{
+    const raw = localStorage.getItem(LS_SYNC);
+    if(!raw) return defaults;
+    return {...defaults, ...JSON.parse(raw)};
+  }catch(e){ return defaults; }
 }
 function saveSyncInfo(s){ try{ localStorage.setItem(LS_SYNC, JSON.stringify(s)); }catch(e){} }
 
@@ -1261,7 +1265,8 @@ const S = {
   searchQuery: '',
   groupFilter: 'ALL',
   zTop: 100,
-  gToken: null,                 // Google Identity token client
+  gToken: null,                 // Google OAuth access token (memory only)
+  gTokenExpiresAt: 0,
 };
 S.zTop = 0;
 S.zTopPinned = 0;
@@ -3088,11 +3093,20 @@ function renderSettingsModal(){
   document.getElementById('set-autosync').addEventListener('change', (e)=>{ s.autoSync = e.target.checked; persistSettings(); });
   const syncSettingsBtn = document.getElementById('sync-settings-btn');
   if(syncSettingsBtn){
-    syncSettingsBtn.addEventListener('click', ()=>doSync());
+    syncSettingsBtn.addEventListener('click', ()=>{
+      if(hasValidDriveToken()) disconnectGoogleDrive();
+      else connectGoogleDrive();
+    });
     const ss = S.sync || {status:'idle'};
-    setSyncUI(ss.status || 'idle', ss.status==='synced' && ss.lastSyncedAt
-      ? 'Connected · Last synced '+new Date(ss.lastSyncedAt).toLocaleString()
-      : (ss.status==='error' ? 'Reconnect needed' : 'Not connected'));
+    if(hasValidDriveToken()){
+      setSyncUI('synced', ss.lastSyncedAt
+        ? 'Connected · Last synced '+new Date(ss.lastSyncedAt).toLocaleString()
+        : 'Connected');
+    }else if(ss.wasConnected || ss.status==='synced' || ss.status==='reconnect' || ss.status==='error'){
+      setSyncUI('reconnect','Reconnect needed');
+    }else{
+      setSyncUI('idle','Not connected');
+    }
   }
   document.getElementById('set-confirmdelete').addEventListener('change', (e)=>{ s.confirmOnDelete = e.target.checked; persistSettings(); });
 }
@@ -3137,6 +3151,8 @@ document.getElementById('btn-reset-app').addEventListener('click', ()=>{
       S.groups = resetGroups;
       S.settings = resetSettings;
       S.sync = resetSync;
+      S.gToken = null;
+      S.gTokenExpiresAt = 0;
       S.viewMode = 'desktop';
       S.searchQuery = '';
       S.groupFilter = 'ALL';
@@ -3744,6 +3760,13 @@ document.getElementById('search-input').addEventListener('input', (e)=>{
 
 /* ==================================================================
    Google Drive sync (Google Identity Services, direct-to-Drive, drive.file scope)
+   ------------------------------------------------------------------
+   PET-style behavior:
+   - OAuth access token is kept in memory only.
+   - Connect explicitly obtains the token.
+   - Sync now reuses the existing token and NEVER starts Google sign-in.
+   - After reopening the app, the token is gone, so the UI says
+     "Reconnect needed" and the user must explicitly tap Connect again.
    ================================================================== */
 function setSyncUI(status, label){
   const dot = document.getElementById('sync-dot');
@@ -3756,39 +3779,63 @@ function setSyncUI(status, label){
     settingsStatus.textContent = label || (
       status==='synced' ? 'Connected' :
       status==='syncing' ? 'Syncing…' :
-      status==='error' ? 'Reconnect needed' : 'Not connected'
+      status==='error' ? 'Reconnect needed' :
+      status==='reconnect' ? 'Reconnect needed' : 'Not connected'
     );
   }
   if(settingsBtn){
-    settingsBtn.textContent = status==='synced' ? 'Sync now' : 'Connect';
+    settingsBtn.textContent = S.gToken ? 'Disconnect' : 'Connect';
     settingsBtn.disabled = status==='syncing';
   }
 }
+
 function loadGisScript(){
   return new Promise((resolve,reject)=>{
-    if(window.google && window.google.accounts){ resolve(); return; }
+    if(window.google && window.google.accounts && window.google.accounts.oauth2){ resolve(); return; }
     const s = document.createElement('script');
-    s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
-    s.onload = resolve; s.onerror = ()=>reject(new Error('Could not load Google Identity Services (are you offline?)'));
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.async = true; s.defer = true;
+    s.onload = resolve;
+    s.onerror = ()=>reject(new Error('Could not load Google Identity Services (are you offline?)'));
     document.head.appendChild(s);
   });
 }
+
 async function driveRequest(url, opts, token){
-  const res = await fetch(url, { ...opts, headers: { ...(opts&&opts.headers), Authorization: 'Bearer '+token } });
-  if(!res.ok){ const e = await res.json().catch(()=>({})); throw new Error((e.error&&e.error.message)||('Drive request failed ('+res.status+')')); }
+  const res = await fetch(url, {
+    ...opts,
+    headers: { ...(opts&&opts.headers), Authorization: 'Bearer '+token }
+  });
+  if(!res.ok){
+    const e = await res.json().catch(()=>({}));
+    const err = new Error((e.error&&e.error.message)||('Drive request failed ('+res.status+')'));
+    err.status = res.status;
+    throw err;
+  }
   return res;
 }
+
 const DRIVE_FILE_NAME = 'stickies-notes-data.json';
+
 async function findDriveFile(token){
   const q = encodeURIComponent(`name = '${DRIVE_FILE_NAME}' and trashed = false`);
-  const res = await driveRequest(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&spaces=drive`, {}, token);
+  const res = await driveRequest(
+    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&spaces=drive`,
+    {}, token
+  );
   const data = await res.json();
   return (data.files && data.files[0]) ? data.files[0].id : null;
 }
+
 async function downloadDriveNotes(token, fileId){
-  const res = await driveRequest(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {}, token);
-  const d = await res.json(); return Array.isArray(d) ? d : (d.notes||[]);
+  const res = await driveRequest(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,
+    {}, token
+  );
+  const d = await res.json();
+  return Array.isArray(d) ? d : (d.notes||[]);
 }
+
 async function uploadDriveNotes(token, notes, existingFileId){
   const boundary='-------314159265358979323846';
   const meta = { name:DRIVE_FILE_NAME, mimeType:'application/json' };
@@ -3796,9 +3843,19 @@ async function uploadDriveNotes(token, notes, existingFileId){
   const url = existingFileId
     ? `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=multipart`
     : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
-  const res = await driveRequest(url, { method: existingFileId?'PATCH':'POST', headers:{'Content-Type':`multipart/related; boundary=${boundary}`}, body }, token);
-  const d = await res.json(); return d.id || existingFileId;
+  const res = await driveRequest(
+    url,
+    {
+      method: existingFileId?'PATCH':'POST',
+      headers:{'Content-Type':`multipart/related; boundary=${boundary}`},
+      body
+    },
+    token
+  );
+  const d = await res.json();
+  return d.id || existingFileId;
 }
+
 function mergeNotesByTime(local, remote){
   const map = new Map(local.map(n=>[n.id,n]));
   remote.forEach(r=>{
@@ -3808,38 +3865,120 @@ function mergeNotesByTime(local, remote){
   });
   return Array.from(map.values());
 }
-async function doSync(){
-  const clientId = STICKIES_GOOGLE_CLIENT_ID;
+
+function clearDriveToken(markReconnect){
+  S.gToken = null;
+  S.gTokenExpiresAt = 0;
+  if(markReconnect){
+    S.sync.status = 'reconnect';
+    S.sync.wasConnected = true;
+    saveSyncInfo(S.sync);
+    setSyncUI('reconnect', 'Reconnect needed');
+  }
+}
+
+function hasValidDriveToken(){
+  return !!S.gToken && (!S.gTokenExpiresAt || Date.now() < S.gTokenExpiresAt - 30000);
+}
+
+async function connectGoogleDrive(){
   if(!navigator.onLine){ toast('You are offline'); return; }
   try{
-    setSyncUI('syncing','Syncing…');
     await loadGisScript();
+    const promptType = S.sync.wasConnected ? '' : 'consent';
     const token = await new Promise((resolve,reject)=>{
       const client = google.accounts.oauth2.initTokenClient({
-        client_id: clientId, scope: 'https://www.googleapis.com/auth/drive.file',
-        callback: (resp)=> resp.access_token ? resolve(resp.access_token) : reject(new Error('No access token')),
-        error_callback: (err)=>reject(new Error(err.type||'Sign-in cancelled')),
+        client_id: STICKIES_GOOGLE_CLIENT_ID,
+        scope: 'https://www.googleapis.com/auth/drive.file',
+        callback: (resp)=>{
+          if(resp && resp.access_token){
+            S.gToken = resp.access_token;
+            S.gTokenExpiresAt = Date.now() + ((Number(resp.expires_in)||3600) * 1000);
+            S.sync.wasConnected = true;
+            S.sync.status = 'connected';
+            saveSyncInfo(S.sync);
+            resolve(resp.access_token);
+          }else{
+            reject(new Error((resp&&resp.error_description)||'No access token'));
+          }
+        },
+        error_callback: (err)=>reject(new Error(err && (err.type||err.message) || 'Sign-in cancelled'))
       });
-      client.requestAccessToken();
+      client.requestAccessToken({prompt: promptType});
     });
+    if(token){
+      setSyncUI('synced', 'Connected');
+      toast('Google Drive connected ✓');
+    }
+  }catch(err){
+    console.error(err);
+    setSyncUI('error','Reconnect needed');
+    toast('Google Drive connection failed: '+err.message);
+  }
+}
+
+function disconnectGoogleDrive(){
+  const token = S.gToken;
+  if(token && window.google && google.accounts && google.accounts.oauth2){
+    try{ google.accounts.oauth2.revoke(token, ()=>{}); }catch(e){}
+  }
+  clearDriveToken(false);
+  S.sync = { status:'idle', lastSyncedAt:S.sync.lastSyncedAt||null, fileId:S.sync.fileId||null, wasConnected:false };
+  saveSyncInfo(S.sync);
+  setSyncUI('idle','Not connected');
+  toast('Google Drive disconnected');
+}
+
+async function doSync(){
+  if(!navigator.onLine){ toast('You are offline'); return; }
+
+  // IMPORTANT: Sync now must NEVER invoke Google account selection.
+  // If this page has no in-memory OAuth token, the user must explicitly
+  // press Connect first.
+  if(!hasValidDriveToken()){
+    clearDriveToken(!!S.sync.wasConnected);
+    toast(S.sync.wasConnected ? 'Reconnect Google Drive first.' : 'Connect Google Drive first.');
+    return;
+  }
+
+  const token = S.gToken;
+  try{
+    setSyncUI('syncing','Syncing…');
     let fileId = S.sync.fileId || await findDriveFile(token);
     let remote = fileId ? await downloadDriveNotes(token, fileId) : [];
     const merged = mergeNotesByTime(S.notes, remote);
-    S.notes = merged; persistNotes(); renderNotes(); renderGroups();
+    S.notes = merged;
+    persistNotes();
+    renderNotes();
+    renderGroups();
     fileId = await uploadDriveNotes(token, merged, fileId);
-    S.sync = { status:'synced', lastSyncedAt: nowIso(), fileId };
+    S.sync = { status:'synced', lastSyncedAt:nowIso(), fileId, wasConnected:true };
     saveSyncInfo(S.sync);
     setSyncUI('synced', 'Synced '+new Date().toLocaleTimeString());
     toast('Synced with Google Drive ✓');
   }catch(err){
     console.error(err);
-    S.sync.status='error'; saveSyncInfo(S.sync);
+    if(err && err.status===401){
+      clearDriveToken(true);
+      toast('Google Drive session expired. Tap Connect to resume.');
+      return;
+    }
+    S.sync.status='error';
+    S.sync.wasConnected=true;
+    saveSyncInfo(S.sync);
     setSyncUI('error','Sync failed');
     toast('Sync failed: '+err.message);
   }
 }
-if(S.sync.status==='synced' && S.sync.lastSyncedAt){
-  setSyncUI('synced', 'Connected · Last synced '+new Date(S.sync.lastSyncedAt).toLocaleString());
+
+// On a fresh page/PWA launch, the OAuth token is intentionally absent.
+// Mirror PET: show Reconnect needed rather than triggering Google sign-in.
+if(S.sync.wasConnected || S.sync.status==='synced'){
+  S.sync.wasConnected = true;
+  setSyncUI('reconnect', 'Reconnect needed');
+  saveSyncInfo(S.sync);
+}else{
+  setSyncUI('idle','Not connected');
 }
 
 /* ==================================================================
