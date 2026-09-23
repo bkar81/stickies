@@ -1,7 +1,7 @@
 {
   "name": "Stickies - Desktop Notes",
   "short_name": "Stickies",
-  "description": "A private, Zhorn-style desktop sticky notes app that runs entirely offline in your browser, with optional sync to your own Google Drive.",
+  "description": "A private, desktop sticky notes app that runs entirely offline in your browser, with optional sync to your own Google Drive.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
