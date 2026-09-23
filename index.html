@@ -3810,79 +3810,44 @@ updateOfflineIndicator();
     if(el) el.textContent=message;
   }
 
-  async function checkForUpdate(manual){
-    if(!registration){
-      if(manual) setCheckStatus('Update check is not ready yet.');
+  async function checkForUpdate() {
+  try {
+    const registration = await navigator.serviceWorker.getRegistration();
+    if (!registration) {
+      toast('Stickies is not running as an installed service worker yet.');
       return;
     }
-    const checkBtn=getCheckBtn();
-    if(checkBtn){
-      checkBtn.classList.add('is-checking');
-      const checkLabel=getCheckLabel();
-      if(checkLabel) checkLabel.textContent='Checking…';
+
+    toast('Checking for Stickies updates…');
+    await registration.update();
+
+    if (registration.waiting) {
+      const accept = confirm('A new version of Stickies is available. Update now?');
+      if (accept) {
+        const waiting = registration.waiting;
+
+        const onControllerChange = () => {
+          navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+          window.location.reload();
+        };
+
+        navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+        waiting.postMessage({ type: 'SKIP_WAITING' });
+      }
+      return;
     }
-    setCheckStatus('');
 
-    let settled=false;
-    const finish=(message)=>{
-      if(settled) return;
-      settled=true;
-      if(message) setCheckStatus(message);
-      const btn=getCheckBtn();
-      if(btn){
-        btn.classList.remove('is-checking');
-        const label=getCheckLabel();
-        if(label) label.textContent='Check for updates';
-      }
-    };
-
-    const timer=setTimeout(()=>finish(manual ? 'Could not check for updates. Please try again.' : ''),10000);
-    const onMessage=(event)=>{
-      const data=event.data||{};
-      if(data.type==='APP_UPDATE_FOUND'){
-        clearTimeout(timer);
-        navigator.serviceWorker.removeEventListener('message',onMessage);
-        showUpdateNotice();
-        finish('A new version of Stickies is ready to install.');
-      }else if(data.type==='APP_UPDATE_CURRENT'){
-        clearTimeout(timer);
-        navigator.serviceWorker.removeEventListener('message',onMessage);
-        finish(manual ? "You're using the latest version of Stickies." : '');
-      }else if(data.type==='APP_UPDATE_ERROR'){
-        clearTimeout(timer);
-        navigator.serviceWorker.removeEventListener('message',onMessage);
-        finish(manual ? 'Could not check for updates. Please try again.' : '');
-      }
-    };
-    navigator.serviceWorker.addEventListener('message',onMessage);
-
-    try{
-      // Keep the existing Service Worker update check for normal SW releases,
-      // but additionally ask the active worker to compare the live index.html
-      // against the cached copy. This detects HTML-only deployments without
-      // requiring any version-number change.
-      await registration.update();
-      if(registration.waiting){
-        clearTimeout(timer);
-        navigator.serviceWorker.removeEventListener('message',onMessage);
-        showUpdateNotice(registration.waiting);
-        finish('A new version of Stickies is ready to install.');
-        return;
-      }
-      const target=registration.active||navigator.serviceWorker.controller;
-      if(target) target.postMessage({type:'CHECK_APP_UPDATE'});
-      else {
-        clearTimeout(timer);
-        navigator.serviceWorker.removeEventListener('message',onMessage);
-        finish(manual ? "You're using the latest version of Stickies." : '');
-      }
-    }catch(error){
-      console.warn('Stickies update check failed:',error);
-      clearTimeout(timer);
-      navigator.serviceWorker.removeEventListener('message',onMessage);
-      finish(manual ? 'Could not check for updates. Please try again.' : '');
+    if (registration.installing) {
+      toast('A Stickies update is being prepared. Please try again in a moment.');
+      return;
     }
+
+    toast('You are using the latest version of Stickies.');
+  } catch (err) {
+    console.error('Stickies update check failed:', err);
+    toast('Could not check for updates. Please try again.');
   }
+}
 
   window.addEventListener('load',()=>{
     navigator.serviceWorker.register('./service-worker.js')
