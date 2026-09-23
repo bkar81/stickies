@@ -90,6 +90,60 @@ input,select,textarea{font-family:inherit;}
 .sync-dot.error{background:#EF4444;}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
 
+
+/* ---------- Toolbar More menu ---------- */
+#btn-toolbar-more{font-size:18px; line-height:1; min-width:40px; justify-content:center;}
+#menu-toolbar-more{
+  right:0; left:auto; width:min(330px,calc(100vw - 16px));
+  max-height:calc(100vh - 70px); padding:8px;
+}
+#menu-toolbar-more .more-section{
+  padding:5px 4px 7px; border-bottom:1px solid #E2E8F0; margin-bottom:7px;
+}
+#menu-toolbar-more .more-section:last-child{border-bottom:0;margin-bottom:0;}
+#menu-toolbar-more .more-title{
+  font-size:10px; font-weight:800; color:#94A3B8;
+  text-transform:uppercase; letter-spacing:.05em; padding:3px 5px 6px;
+}
+#menu-toolbar-more .tb-btn,
+#menu-toolbar-more .tb-input{width:100%; justify-content:flex-start; margin:2px 0;}
+#menu-toolbar-more .tb-sep{display:none;}
+#menu-toolbar-more .tb-dropdown{display:block; width:100%;}
+#menu-toolbar-more .tb-dropdown > .tb-btn{width:100%;}
+#menu-toolbar-more .tb-dropdown .tb-menu{
+  position:relative; top:auto; left:auto; right:auto;
+  margin:3px 0 5px 10px; width:calc(100% - 10px) !important;
+  box-shadow:none; max-height:none;
+}
+#menu-toolbar-more .more-grid{
+  display:grid; grid-template-columns:1fr 1fr; gap:5px;
+}
+#menu-toolbar-more .more-grid .tb-btn{margin:0;}
+@media (max-width:720px){
+  #menu-toolbar-more{width:min(330px,calc(100vw - 12px));}
+  #btn-expand-toolbar{top:5px;right:5px;}
+}
+
+/* ---------- Toggleable Sticky Manager groups panel ---------- */
+#manager-page .mgr-body{flex:1;display:flex;overflow:hidden;min-height:0;}
+#manager-page .mgr-side{
+  width:230px;flex:0 0 230px;border-right:1px solid #E2E8F0;
+  background:#fff;overflow:auto;padding:10px;
+}
+#manager-page.manager-groups-collapsed .mgr-side{
+  width:0;flex:0 0 0;padding-left:0;padding-right:0;border-right:none;overflow:hidden;
+}
+#mgr-collapse-groups,#mgr-expand-groups{
+  flex:0 0 22px;width:22px;height:44px;align-self:flex-start;
+  border:none;border-right:1px solid #E2E8F0;background:#fff;
+  color:#94A3B8;cursor:pointer;font-size:13px;line-height:44px;
+  padding:0;text-align:center;
+}
+#mgr-collapse-groups:hover,#mgr-expand-groups:hover{background:#F8FAFC;color:#475569;}
+#mgr-expand-groups{display:none;}
+#manager-page.manager-groups-collapsed #mgr-collapse-groups{display:none;}
+#manager-page.manager-groups-collapsed #mgr-expand-groups{display:block;}
+
 /* ---------- Main row: sidebar + canvas ---------- */
 #main-row{flex:1 1 auto; display:flex; min-height:0;}
 
@@ -106,7 +160,9 @@ input,select,textarea{font-family:inherit;}
 #sidebar{transition:flex-basis .15s ease;}
 #sidebar.collapsed{flex-basis:0; width:0; overflow:hidden; border-right:none;}
 #btn-expand-sidebar{
-  flex:0 0 auto; width:22px; border:none; border-right:1px solid #E2E8F0; background:#fff; color:#94A3B8; cursor:pointer; font-size:13px;
+  flex:0 0 auto; width:22px; height:44px; align-self:flex-start;
+  border:none; border-right:1px solid #E2E8F0; background:#fff;
+  color:#94A3B8; cursor:pointer; font-size:13px; line-height:44px; padding:0;
 }
 #btn-expand-sidebar:hover{background:#F8FAFC; color:#475569;}
 #btn-expand-sidebar[hidden]{display:none;}
@@ -490,47 +546,60 @@ input,select,textarea{font-family:inherit;}
         </div>
       </div>
 
-      <div class="tb-dropdown">
-        <button class="tb-btn" id="btn-templates">📄 Templates</button>
-        <div class="tb-menu" id="menu-templates"></div>
-      </div>
+      <div class="tb-dropdown" style="margin-left:auto;">
+        <button class="tb-btn icon-only" id="btn-toolbar-more" title="More toolbar actions" aria-label="More toolbar actions">⋮</button>
+        <div class="tb-menu" id="menu-toolbar-more">
+          <div class="more-section">
+            <div class="more-title">Search</div>
+            <input class="tb-input" id="search-input" type="text" placeholder="🔍 Find stickies, tags, groups...">
+          </div>
 
-      <button class="tb-btn" id="btn-toggle-view">🖥️ <span id="view-mode-label">Desktop</span></button>
+          <div class="more-section">
+            <div class="more-title">Arrange & View</div>
+            <div class="tb-dropdown">
+              <button class="tb-btn" id="btn-templates">📄 Templates</button>
+              <div class="tb-menu" id="menu-templates"></div>
+            </div>
+            <button class="tb-btn" id="btn-toggle-view">🖥️ <span id="view-mode-label">Desktop</span></button>
+            <div class="tb-dropdown">
+              <button class="tb-btn" id="btn-organize">🧹 Auto Organize</button>
+              <div class="tb-menu" id="menu-organize">
+                <div class="tb-menu-item" data-organize="tile">▦ Tile Grid</div>
+                <div class="tb-menu-item" data-organize="cascade">🗂️ Cascade</div>
+                <div class="tb-menu-item" data-organize="group">🏷️ Group by Group</div>
+                <div class="tb-menu-item" data-organize="color">🎨 Group by Color</div>
+                <div class="tb-menu-item" data-organize="compact">📦 Compact (no gaps)</div>
+              </div>
+            </div>
+            <button class="tb-btn" id="btn-snap">🧲 Snap Grid</button>
+            <button class="tb-btn" id="btn-minimize-all">▬ Minimize All</button>
+          </div>
 
-      <div class="tb-dropdown">
-        <button class="tb-btn" id="btn-organize">🧹 Auto Organize</button>
-        <div class="tb-menu" id="menu-organize">
-          <div class="tb-menu-item" data-organize="tile">▦ Tile Grid</div>
-          <div class="tb-menu-item" data-organize="cascade">🗂️ Cascade</div>
-          <div class="tb-menu-item" data-organize="group">🏷️ Group by Group</div>
-          <div class="tb-menu-item" data-organize="color">🎨 Group by Color</div>
-          <div class="tb-menu-item" data-organize="compact">📦 Compact (no gaps)</div>
+          <div class="more-section">
+            <div class="more-title">Manage</div>
+            <div class="more-grid">
+              <button class="tb-btn" id="btn-manager" title="Sticky Manager">🗒️ Sticky Manager</button>
+              <button class="tb-btn" id="btn-archive" title="Trash" style="position:relative;">🗑️ Trash<span id="trash-badge" class="count-badge" hidden>0</span></button>
+              <button class="tb-btn" id="btn-export">⬇️ Export JSON</button>
+              <button class="tb-btn" id="btn-import">⬆️ Import JSON</button>
+            </div>
+            <input type="file" id="file-import" accept=".json" hidden>
+          </div>
+
+          <div class="more-section">
+            <div class="more-title">App</div>
+            <div class="more-grid">
+              <button class="tb-btn" id="btn-settings">⚙️ Settings</button>
+              <button class="tb-btn" id="btn-about">ℹ️ About</button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <button class="tb-btn" id="btn-snap">🧲 Snap Grid</button>
-      <button class="tb-btn" id="btn-minimize-all">▬ Minimize All</button>
-
-      <div class="tb-sep"></div>
-
-      <input class="tb-input" id="search-input" type="text" placeholder="🔍 Find stickies, tags, groups...">
-
-      <button class="tb-btn" id="btn-manager" title="Sticky Manager">🗒️ Sticky Manager</button>
-      <button class="tb-btn" id="btn-archive" title="Trash" style="position:relative;">🗑️ Trash<span id="trash-badge" class="count-badge" hidden>0</span></button>
-    </div>
-    <div class="tb-row" style="padding-top:0;">
-      <button class="tb-btn" id="btn-sync">
-        <span class="sync-dot" id="sync-dot"></span>
-        <span id="sync-label">Sync with Google Drive</span>
-      </button>
-      <button class="tb-btn" id="btn-export">⬇️ Export JSON</button>
-      <button class="tb-btn" id="btn-import">⬆️ Import JSON</button>
-      <input type="file" id="file-import" accept=".json" hidden>
-      <div style="flex:1"></div>
-      <button class="tb-btn" id="btn-settings">⚙️ Settings</button>
-      <button class="tb-btn" id="btn-about">ℹ️ About</button>
+      
     </div>
   </div>
+  
 
   <!-- ============ MAIN ROW: sidebar + canvas ============ -->
   <div id="main-row">
@@ -545,7 +614,7 @@ input,select,textarea{font-family:inherit;}
       <div id="sb-newgroup-row"></div>
       <div id="sb-list"></div>
     </div>
-    <button id="btn-expand-sidebar" title="Show Groups panel" hidden>☰</button>
+    <button id="btn-expand-sidebar" title="Show Groups panel" aria-label="Show Groups panel" hidden>⮞</button>
     <div id="canvas-wrap">
       <div id="canvas">
         <div id="notes-layer"></div>
@@ -566,7 +635,7 @@ input,select,textarea{font-family:inherit;}
       <button data-close="modal-settings">✕</button>
     </div>
     <div class="modal-body" id="settings-body"></div>
-    <div class="modal-footer">
+    <div class="modal-footer" style="justify-content:space-between;">
       <button class="btn danger" id="btn-reset-app">Reset App Data</button>
       <button class="btn primary" data-close="modal-settings">Done</button>
     </div>
@@ -654,9 +723,13 @@ input,select,textarea{font-family:inherit;}
   </div>
   <div class="mgr-body">
     <div class="mgr-side">
-      <div class="sb-head"><b>Desktop Groups</b></div>
+      <div class="sb-head">
+        <b>Desktop Groups</b>
+        <button id="mgr-collapse-groups" title="Collapse Groups panel" aria-label="Collapse Groups panel">⮜</button>
+      </div>
       <div id="mgr-side"></div>
     </div>
+    <button id="mgr-expand-groups" title="Show Groups panel" aria-label="Show Groups panel">⮞</button>
     <div class="mgr-main">
       <div class="mgr-searchbar">
         <input class="tb-input" id="mgr-search" placeholder="🔍 Search in all stickies (title, text, tags)...">
@@ -796,12 +869,12 @@ function sampleNotes(){
   const t = nowIso();
   return [
     { id:'sample-welcome', displayId:1, title:'📌 Welcome to Stickies!',
-      content:'Welcome to Stickies! 👋\n\n- Drag notes anywhere across the desktop canvas\n- Drop one near another and it aligns without overlapping\n- Click the header ▲ to minimize a note to its title bar\n- Adjust transparency to see through stickies\n- Customize font family & size\n- Type [] for a 🔲 checklist box, click it to tick ☑️',
+      content:'Welcome to Stickies! 👋\n\n- Drag notes anywhere across the desktop canvas\n- Drop one near another and it aligns without overlapping\n- Click the header ⮝ to minimize a note to its title bar\n- Adjust transparency to see through stickies\n- Customize font family & size\n- Type [] for a 🔲 checklist box, click it to tick ☑️',
       color:'yellow', customColor:null, opacity:1, group:'General', x:15, y:15, width:390, height:270,
       zIndex:10, isPinned:true, isRolledUp:false, isLocked:false, isDeleted:false, tags:['Guide','Welcome'],
       fontFamily:'sans', fontSize:'base', createdAt:t, updatedAt:t },
     { id:'sample-drive-sync', displayId:2, title:'☁️ Google Drive Sync & Offline',
-      content:'Notes can sync to your own personal Google Drive.\n\n1. Open Settings and connect your Google account\n2. Click "Sync with Google Drive" in the top bar\n3. Notes merge and stay in sync across devices\n4. 100% offline support via LocalStorage + installable PWA\n5. Infinite scrollable canvas for unlimited stickies!',
+      content:'Notes can sync to your own personal Google Drive.\n\n1. Open Settings and connect your Google account\n2. Open Settings → Google Drive Sync and connect/sync\n3. Notes merge and stay in sync across devices\n4. 100% offline support via LocalStorage + installable PWA\n5. Infinite scrollable canvas for unlimited stickies!',
       color:'blue', customColor:null, opacity:0.95, group:'Work', x:415, y:15, width:385, height:270,
       zIndex:9, isPinned:false, isRolledUp:false, isLocked:false, isDeleted:false, tags:['Google Drive','Sync'],
       fontFamily:'sans', fontSize:'base', createdAt:t, updatedAt:t },
@@ -1507,7 +1580,7 @@ function buildNoteEl(note){
       <button class="hbtn settings-btn" data-act="settings" title="Sticky actions">⚙️</button>
       <button class="hbtn" data-act="pin" title="${note.isPinned?'Pinned — always on top within the pinned stack. Click to unpin.':'Pin — keep above all unpinned stickies'}">${note.isPinned?'📌':'📍'}</button>
       <button class="hbtn" data-act="lock" title="${note.isLocked?'Unlock sticky':'Lock sticky'}">${note.isLocked?'🔒':'🔓'}</button>
-      <button class="hbtn" data-act="rollup" title="Minimize">${note.isRolledUp?'▼':'▲'}</button>
+      <button class="hbtn" data-act="rollup" title="${note.isRolledUp?'Expand':'Minimize'}" aria-label="${note.isRolledUp?'Expand':'Minimize'}">${note.isRolledUp?'⮟':'⮝'}</button>
       <button class="hbtn date-icon" data-act="date-icon" title="Sticky information" aria-label="Sticky information">💡</button>
       <button class="hbtn" data-act="close" title="Delete">❌</button>
     </div>
@@ -1679,7 +1752,9 @@ function buildNoteEl(note){
     if(note.isLocked){ e.preventDefault(); e.stopPropagation(); return; }
     note.isRolledUp = !note.isRolledUp; note.updatedAt=nowIso(); persistNotes();
     el.classList.toggle('rolled-up', note.isRolledUp);
-    e.target.textContent = note.isRolledUp?'▼':'▲';
+    e.target.textContent = note.isRolledUp?'⮟':'⮝';
+    e.target.title = note.isRolledUp ? 'Expand' : 'Minimize';
+    e.target.setAttribute('aria-label', note.isRolledUp ? 'Expand' : 'Minimize');
     if(!note.isRolledUp) el.style.height = note.height+'px'; else el.style.height='';
     resizeCanvas();
     refreshInfoTooltip();
@@ -2918,7 +2993,7 @@ function renderSettingsModal(){
       <div class="stg-card${s.dragBehavior==='overlap'?' selected':''}" data-v="overlap"><b>Stay Overlapped (Keep Position)</b><small>Notes stay exactly where you drop them, overlapping naturally</small></div>
       <div class="stg-card${s.dragBehavior==='auto-adjust'?' selected':''}" data-v="auto-adjust"><b>Auto-Adjust to Nearest Empty Spot</b><small>Automatically resolves collision so notes don't overlap</small></div>
     </div>
-    <div class="hint" style="margin-top:6px;">Resizing/expanding a note is always allowed to overlap others — this only affects dragging.</div>
+    <div class="hint" style="margin-top:6px;font-size:12.5px;color:#475569;line-height:1.5;">Resizing/expanding a sticky is always allowed to overlap others — this only affects dragging.</div>
 
     <div class="stg-label">🗑️ Ask before deleting</div>
     <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:#334155; cursor:pointer;">
@@ -2926,12 +3001,25 @@ function renderSettingsModal(){
     </label>
 
     <div class="stg-label">☁️ Google Drive sync</div>
-    <div class="stg-field">
-      <div class="hint">
-        Google Drive sync is <b>optional and off by default</b>. The official Stickies deployment already has Google OAuth configured, so you do not need to enter a Client ID.
+    <div class="stg-field" style="padding:0;overflow:hidden;">
+      <div style="padding:12px 14px 10px;">
+        <div style="font-size:12.5px;color:#475569;line-height:1.5;">
+          Google Drive sync is <b>optional and off by default</b>. The official Stickies deployment already has Google OAuth configured, so you do not need to enter a Client ID.
+        </div>
       </div>
-      <div class="hint" style="margin-top:8px;">Connect from <b>Sync with Google Drive</b> in the top bar. Stickies requests access only when you explicitly connect your Google account.</div>
-      <div style="margin-top:8px;font-size:12px;">
+      <div style="margin:0 0 8px 0;border:1px solid #E2E8F0;border-radius:12px;background:#F8FAFC;padding:12px 14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+          <div style="min-width:0;">
+            <div style="font-size:13px;font-weight:700;color:#1E293B;">Google Drive</div>
+            <div id="sync-settings-status" style="font-size:11.5px;color:#64748B;margin-top:3px;">Not connected</div>
+          </div>
+          <button class="stg-action" id="sync-settings-btn" type="button">Connect</button>
+        </div>
+      </div>
+      <div style="padding:0 14px 12px;font-size:12px;color:#64748B;line-height:1.45;">
+        Your Stickies data is backed up to your own Google Drive only when you explicitly connect and sync.
+      </div>
+      <div style="padding:0 14px 12px;font-size:12px;">
         <a href="./README.html" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none;font-weight:600;">📖 Read the Stickies README</a>
       </div>
     </div>
@@ -2988,13 +3076,98 @@ function renderSettingsModal(){
     document.getElementById('grid-size-field').style.display = s.snapToGrid?'block':'none';
   });
   document.getElementById('set-autosync').addEventListener('change', (e)=>{ s.autoSync = e.target.checked; persistSettings(); });
+  const syncSettingsBtn = document.getElementById('sync-settings-btn');
+  if(syncSettingsBtn){
+    syncSettingsBtn.addEventListener('click', ()=>doSync());
+    const ss = S.sync || {status:'idle'};
+    setSyncUI(ss.status || 'idle', ss.status==='synced' && ss.lastSyncedAt
+      ? 'Connected · Last synced '+new Date(ss.lastSyncedAt).toLocaleString()
+      : (ss.status==='error' ? 'Reconnect needed' : 'Not connected'));
+  }
   document.getElementById('set-confirmdelete').addEventListener('change', (e)=>{ s.confirmOnDelete = e.target.checked; persistSettings(); });
 }
 document.getElementById('btn-settings').addEventListener('click', ()=>{ renderSettingsModal(); openModal('modal-settings'); });
 document.getElementById('btn-reset-app').addEventListener('click', ()=>{
-  confirmDialog('Reset all app data?', 'This deletes every note, group and setting stored in this browser. This cannot be undone. Consider exporting a backup first.', ()=>{
-    localStorage.removeItem(LS_NOTES); localStorage.removeItem(LS_GROUPS); localStorage.removeItem(LS_SETTINGS); localStorage.removeItem(LS_SYNC);
-    location.reload();
+  confirmDialog('Reset all app data?', 'This restores Stickies to its clean default state, including the three sample stickies, default groups and default settings. Your existing local data will be replaced. Consider exporting a backup first.', ()=>{
+    const resetNotes = sampleNotes();
+    const resetGroups = sampleGroups();
+    const resetSettings = {...DEFAULT_SETTINGS};
+    const resetSync = {status:'idle', lastSyncedAt:null, fileId:null};
+
+    const oldStorage = {
+      notes: localStorage.getItem(LS_NOTES),
+      groups: localStorage.getItem(LS_GROUPS),
+      settings: localStorage.getItem(LS_SETTINGS),
+      sync: localStorage.getItem(LS_SYNC),
+      sidebar: localStorage.getItem(LS_SIDEBAR),
+      managerGroups: localStorage.getItem(LS_MANAGER_GROUPS)
+    };
+    try{
+      // Reset the in-memory state AND persistence together. This avoids relying
+      // on a page reload/service-worker cache to recreate the initial state.
+      // It also means Reset cannot leave the currently displayed app blank.
+      localStorage.setItem(LS_NOTES, JSON.stringify(resetNotes));
+      localStorage.setItem(LS_GROUPS, JSON.stringify(resetGroups));
+      localStorage.setItem(LS_SETTINGS, JSON.stringify(resetSettings));
+      localStorage.setItem(LS_SYNC, JSON.stringify(resetSync));
+
+      // Verify every persistent value before changing the live application state.
+      const savedNotes = JSON.parse(localStorage.getItem(LS_NOTES) || 'null');
+      const savedGroups = JSON.parse(localStorage.getItem(LS_GROUPS) || 'null');
+      const savedSettings = JSON.parse(localStorage.getItem(LS_SETTINGS) || 'null');
+      const savedSync = JSON.parse(localStorage.getItem(LS_SYNC) || 'null');
+      if(!Array.isArray(savedNotes) || savedNotes.length !== 3 ||
+         !Array.isArray(savedGroups) || savedGroups.length !== 3 ||
+         !savedSettings || typeof savedSettings !== 'object' ||
+         !savedSync || typeof savedSync !== 'object'){
+        throw new Error('Reset data verification failed');
+      }
+
+      S.notes = resetNotes;
+      S.groups = resetGroups;
+      S.settings = resetSettings;
+      S.sync = resetSync;
+      S.viewMode = 'desktop';
+      S.searchQuery = '';
+      S.groupFilter = 'ALL';
+      S.zTop = 0;
+      S.zTopPinned = 0;
+
+      // Reset the two collapsible Groups panels to their normal expanded state.
+      try{ localStorage.removeItem(LS_SIDEBAR); }catch(e){}
+      try{ localStorage.removeItem(LS_MANAGER_GROUPS); }catch(e){}
+      setSidebarCollapsed(false);
+      setManagerGroupsCollapsed(false);
+
+      // Close any open settings/modal state and redraw from the reset state.
+      closeAllToolbarMenus();
+      document.querySelectorAll('.modal.show').forEach(m=>m.classList.remove('show'));
+      renderBoth();
+      updateTrashBadge();
+      document.getElementById('btn-snap').classList.toggle('active', S.settings.snapToGrid);
+      setSyncUI('idle','Not connected');
+      refreshInfoTooltip();
+      toast('Stickies reset to default data');
+    }catch(e){
+      // If storage or verification fails, put the previous values back so a
+      // partial reset can never destroy only some of the user's data.
+      try{
+        const restore = (key, value)=>{
+          if(value === null) localStorage.removeItem(key);
+          else localStorage.setItem(key, value);
+        };
+        restore(LS_NOTES, oldStorage.notes);
+        restore(LS_GROUPS, oldStorage.groups);
+        restore(LS_SETTINGS, oldStorage.settings);
+        restore(LS_SYNC, oldStorage.sync);
+        restore(LS_SIDEBAR, oldStorage.sidebar);
+        restore(LS_MANAGER_GROUPS, oldStorage.managerGroups);
+      }catch(rollbackError){
+        console.error('Reset rollback also failed:', rollbackError);
+      }
+      console.error('Unable to complete Reset App Data:', e);
+      toast('Reset failed — your existing data was kept');
+    }
   });
 });
 
@@ -3016,7 +3189,7 @@ function renderAboutModal(){
       <div class="about-card"><span class="emoji">✍️</span><b>Rich text</b><small>Bold, italic, underline, strikethrough, bullets and numbering with visual Markdown-style list behavior.</small></div>
       <div class="about-card"><span class="emoji">☑️</span><b>Checklists</b><small>Type <code>[]</code> or <code>[x]</code> at the start of a line for a clickable checklist box.</small></div>
       <div class="about-card"><span class="emoji">🔍</span><b>Search & highlight</b><small>Search across titles, content, tags, and groups.</small></div>
-      <div class="about-card"><span class="emoji">📁</span><b>Groups sidebar</b><small>Organize stickies into color-coded groups.</small></div>
+      <div class="about-card"><span class="emoji">📁</span><b>Groups sidebar</b><small>The Groups sidebar can be toggled with ⮜ to hide it and ⮞ to show it again, giving more space for your stickies.</small></div>
       <div class="about-card"><span class="emoji">🧹</span><b>Auto-organize</b><small>Tile, cascade, compact, or cluster notes.</small></div>
       <div class="about-card"><span class="emoji">🗒️</span><b>Sticky Manager</b><small>Manage, move, delete, export, import, and edit stickies in bulk.</small></div>
       <div class="about-card"><span class="emoji">🗑️</span><b>Trash</b><small>Deleted stickies remain recoverable until permanently removed.</small></div>
@@ -3333,8 +3506,26 @@ document.getElementById('mgr-export-selected').addEventListener('click', ()=>{
   exportJSON({notes:list}, 'stickies_selection');
 });
 document.getElementById('mgr-import').addEventListener('click', ()=>document.getElementById('file-import').click());
-document.getElementById('btn-manager').addEventListener('click', ()=>{ document.getElementById('manager-page').hidden=false; renderManager(); });
+document.getElementById('btn-manager').addEventListener('click', ()=>{
+  document.getElementById('manager-page').hidden=false;
+  setManagerGroupsCollapsed(localStorage.getItem(LS_MANAGER_GROUPS)==='1');
+  renderManager();
+});
 document.getElementById('btn-manager-close').addEventListener('click', ()=>{ document.getElementById('manager-page').hidden=true; });
+
+const LS_MANAGER_GROUPS = 'stickies_manager_groups_collapsed_v1';
+function setManagerGroupsCollapsed(collapsed){
+  const page = document.getElementById('manager-page');
+  page.classList.toggle('manager-groups-collapsed', collapsed);
+  try{ localStorage.setItem(LS_MANAGER_GROUPS, collapsed ? '1' : '0'); }catch(e){}
+}
+document.getElementById('mgr-collapse-groups').addEventListener('click', ()=>{
+  setManagerGroupsCollapsed(true);
+});
+document.getElementById('mgr-expand-groups').addEventListener('click', ()=>{
+  setManagerGroupsCollapsed(false);
+});
+setManagerGroupsCollapsed(localStorage.getItem(LS_MANAGER_GROUPS)==='1');
 
 /* ==================================================================
    Export / Import
@@ -3431,11 +3622,17 @@ function setupDropdown(btnId, menuId){
 }
 function closeAllToolbarMenus(){ document.querySelectorAll('.tb-menu.open').forEach(m=>m.classList.remove('open')); }
 document.addEventListener('click', closeAllToolbarMenus);
+document.getElementById('menu-toolbar-more').addEventListener('click', e=>e.stopPropagation());
 setupDropdown('btn-templates','menu-templates');
 setupDropdown('btn-organize','menu-organize');
+setupDropdown('btn-toolbar-more','menu-toolbar-more');
 
 document.getElementById('menu-organize').querySelectorAll('[data-organize]').forEach(item=>{
   item.addEventListener('click', ()=>{ autoOrganize(item.getAttribute('data-organize')); closeAllToolbarMenus(); toast('Notes organized'); });
+});
+document.getElementById('menu-toolbar-more').querySelectorAll('.tb-btn').forEach(btn=>{
+  if(btn.id==='btn-templates' || btn.id==='btn-organize') return;
+  btn.addEventListener('click', ()=>setTimeout(closeAllToolbarMenus, 0));
 });
 
 document.getElementById('btn-toggle-view').addEventListener('click', ()=>{
@@ -3517,8 +3714,23 @@ document.getElementById('search-input').addEventListener('input', (e)=>{
    Google Drive sync (Google Identity Services, direct-to-Drive, drive.file scope)
    ================================================================== */
 function setSyncUI(status, label){
-  document.getElementById('sync-dot').className = 'sync-dot'+(status?(' '+status):'');
-  if(label) document.getElementById('sync-label').textContent = label;
+  const dot = document.getElementById('sync-dot');
+  const topLabel = document.getElementById('sync-label');
+  const settingsStatus = document.getElementById('sync-settings-status');
+  const settingsBtn = document.getElementById('sync-settings-btn');
+  if(dot) dot.className = 'sync-dot'+(status?(' '+status):'');
+  if(topLabel && label) topLabel.textContent = label;
+  if(settingsStatus){
+    settingsStatus.textContent = label || (
+      status==='synced' ? 'Connected' :
+      status==='syncing' ? 'Syncing…' :
+      status==='error' ? 'Reconnect needed' : 'Not connected'
+    );
+  }
+  if(settingsBtn){
+    settingsBtn.textContent = status==='synced' ? 'Sync now' : 'Connect';
+    settingsBtn.disabled = status==='syncing';
+  }
 }
 function loadGisScript(){
   return new Promise((resolve,reject)=>{
@@ -3594,8 +3806,9 @@ async function doSync(){
     toast('Sync failed: '+err.message);
   }
 }
-document.getElementById('btn-sync').addEventListener('click', doSync);
-if(S.sync.status==='synced' && S.sync.lastSyncedAt){ setSyncUI('synced', 'Synced '+new Date(S.sync.lastSyncedAt).toLocaleTimeString()); }
+if(S.sync.status==='synced' && S.sync.lastSyncedAt){
+  setSyncUI('synced', 'Connected · Last synced '+new Date(S.sync.lastSyncedAt).toLocaleString());
+}
 
 /* ==================================================================
    PWA install prompt + offline indicator + service worker
