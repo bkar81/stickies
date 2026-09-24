@@ -90,6 +90,8 @@ input,select,textarea{font-family:inherit;}
 .tb-menu-item:hover{background:#F1F5F9;}
 .tb-menu-item.danger{color:#DC2626;}
 .tb-menu-divider{height:1px; background:#E2E8F0; margin:4px 2px;}
+.tb-account{font-size:11.5px;color:#64748B;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px;align-self:center;}
+@media (max-width:900px){.tb-account{display:none !important;}}
 .sync-dot{width:8px;height:8px;border-radius:50%;background:#94A3B8;flex:0 0 auto;}
 .count-badge{
   position:absolute; top:-6px; right:-6px; background:#DC2626; color:#fff; font-size:10px; font-weight:700;
@@ -557,6 +559,9 @@ input,select,textarea{font-family:inherit;}
         </div>
       </div>
 
+      <button class="tb-btn" id="btn-sync" style="position:relative;" title="Sync with Google Drive"><span id="sync-btn-label">☁️ Sync</span><span id="sync-badge" class="count-badge" hidden>0</span></button>
+      <span id="tb-account" class="tb-account" hidden></span>
+
       <div class="tb-dropdown" style="margin-left:auto;">
         <button class="tb-btn icon-only" id="btn-toolbar-more" title="More toolbar actions" aria-label="More toolbar actions">⋮</button>
         <div class="tb-menu" id="menu-toolbar-more">
@@ -781,7 +786,7 @@ input,select,textarea{font-family:inherit;}
 <div id="toast"></div>
 
 <script>
-const STICKIES_APP_VERSION = "1.0.0";
+const STICKIES_APP_VERSION = "1.0.1";
 /* ==================================================================
    STICKIES — single-file vanilla JS app (no build step, no React)
    ================================================================== */
@@ -828,7 +833,7 @@ const DEFAULT_SETTINGS = {
   canvasWidth:4200, canvasHeight:2800,
   dragBehavior:'overlap',      // 'auto-adjust' | 'overlap'
   confirmOnDelete:true,
-  googleClientId:STICKIES_GOOGLE_CLIENT_ID, autoSync:false,
+  googleClientId:STICKIES_GOOGLE_CLIENT_ID,
 };
 
 function uid(prefix){ return prefix+'-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,8); }
@@ -879,17 +884,17 @@ function sampleGroups(){
 function sampleNotes(){
   const t = nowIso();
   return [
-    { id:'sample-welcome', displayId:1, title:'📌 Welcome to Stickies!',
+    { id:'sample-welcome', title:'📌 Welcome to Stickies!',
       content:'Welcome to Stickies! 👋\n\n- Drag notes anywhere across the desktop canvas\n- Drop one near another and it aligns without overlapping\n- Click the header ⮝ to minimize a note to its title bar\n- Adjust transparency to see through stickies\n- Customize font family & size\n- Type [] for a 🔲 checklist box, click it to tick ☑️',
       color:'yellow', customColor:null, opacity:1, group:'General', x:15, y:15, width:390, height:270,
       zIndex:10, isPinned:true, isRolledUp:false, isLocked:false, isDeleted:false, tags:['Guide','Welcome'],
       fontFamily:'sans', fontSize:'base', createdAt:t, updatedAt:t },
-    { id:'sample-drive-sync', displayId:2, title:'☁️ Google Drive Sync & Offline',
+    { id:'sample-drive-sync', title:'☁️ Google Drive Sync & Offline',
       content:'Notes can sync to your own personal Google Drive.\n\n1. Open Settings and connect your Google account\n2. Open Settings → Google Drive Sync and connect/sync\n3. Notes merge and stay in sync across devices\n4. 100% offline support via LocalStorage + installable PWA\n5. Infinite scrollable canvas for unlimited stickies!',
       color:'blue', customColor:null, opacity:0.95, group:'Work', x:415, y:15, width:385, height:270,
       zIndex:9, isPinned:false, isRolledUp:false, isLocked:false, isDeleted:false, tags:['Google Drive','Sync'],
       fontFamily:'sans', fontSize:'base', createdAt:t, updatedAt:t },
-    { id:'sample-todo', displayId:3, title:'✅ Features Checklist',
+    { id:'sample-todo', title:'✅ Features Checklist',
       content:'☑️ Unlimited scrollable canvas\n☑️ Minimize to title & restore back\n☑️ Transparency slider support\n☑️ Common font family selections\n🔲 Type [] to create checklist box\n🔲 Click on 🔲 to toggle it to ☑️\n🔲 Press Enter for next checklist item\n☑️ Auto-organize notes',
       color:'green', customColor:null, opacity:0.92, group:'Personal', x:805, y:15, width:320, height:270,
       zIndex:8, isPinned:false, isRolledUp:false, isLocked:false, isDeleted:false, tags:['Tasks','Checklist'],
@@ -937,7 +942,7 @@ function loadSettings(){
 function saveSettings(s){ try{ localStorage.setItem(LS_SETTINGS, JSON.stringify(s)); }catch(e){ console.error(e); } }
 
 function loadSyncInfo(){
-  const defaults = {status:'idle', lastSyncedAt:null, fileId:null, wasConnected:false};
+  const defaults = {status:'idle', lastSyncedAt:null, fileId:null, wasConnected:false, accountEmail:null};
   try{
     const raw = localStorage.getItem(LS_SYNC);
     if(!raw) return defaults;
@@ -1271,15 +1276,9 @@ const S = {
 };
 S.zTop = 0;
 S.zTopPinned = 0;
-// Migrate any pre-existing notes saved before displayId existed.
-let migratedDisplayId = S.notes.reduce((m,n)=>Math.max(m, Number(n.displayId)||0), 0);
-S.notes.forEach(n=>{ if(!n.displayId){ n.displayId = ++migratedDisplayId; } });
-function nextDisplayId(){
-  // Reuse an ID only after that ID has been permanently removed. Notes in Trash
-  // still retain their IDs, so restoring them can never collide with a new note.
-  const maxId = S.notes.reduce((m,n)=>Math.max(m, Number(n.displayId)||0), 0);
-  return maxId + 1;
-}
+// Older versions gave every sticky a visible number (displayId). It is no longer used;
+// drop it from anything loaded from this device.
+S.notes.forEach(n=>{ delete n.displayId; });
 
 const notesLayer = document.getElementById('notes-layer');
 const canvasEl = document.getElementById('canvas');
@@ -1287,6 +1286,7 @@ const canvasWrap = document.getElementById('canvas-wrap');
 
 function persistNotes(){
   saveNotes(S.notes);
+  try{ refreshSyncHint(); }catch(e){}
   updateTrashBadge();
   refreshManagerIfOpen();
 }
@@ -1481,7 +1481,6 @@ function getStickyColorInfo(note){
 function getStickyInfoRows(note){
   const layer=getStickyLayerInfo(note);
   return [
-    ['ID', Number(note.displayId)||'—'],
     ['Created', fmtFullDateTime(note.createdAt)],
     ['Modified', fmtFullDateTime(note.updatedAt||note.createdAt)],
     ['Group', note.group||'General'],
@@ -2748,7 +2747,6 @@ function pickNewNotePosition(){
 function duplicateNote(note){
   const copy = JSON.parse(JSON.stringify(note));
   copy.id = uid('note');
-  copy.displayId = nextDisplayId();
   copy.title = (note.title || 'Untitled') + ' (copy)';
   copy.x = note.x + 24; copy.y = note.y + 24;
   copy.isPinned = false; copy.isLocked = false;
@@ -2767,7 +2765,7 @@ function createNote(opts){
     ? 'New note...\n\n🔲 Add a checklist item\n🔲 Another item'
     : '';
   const note = {
-    id: uid('note'), displayId: nextDisplayId(), title: opts.title || 'New Sticky', content: opts.content!==undefined?opts.content:template,
+    id: uid('note'), title: opts.title || 'New Sticky', content: opts.content!==undefined?opts.content:template,
     color: opts.color || s.defaultColor, customColor:null, opacity: s.defaultOpacity,
     group: opts.group !== undefined ? opts.group : s.defaultGroup,
     x: pos.x, y: pos.y, width: s.defaultWidth, height: s.defaultHeight,
@@ -3035,21 +3033,12 @@ function renderSettingsModal(){
         </div>
       </div>
       <div style="padding:0 14px 12px;font-size:12px;color:#64748B;line-height:1.45;">
-        Your Stickies data is backed up to your own Google Drive only when you explicitly connect and sync.
+        Your Stickies data is backed up to your own Google Drive only when you explicitly connect and sync. Use the ☁️ Sync button in the toolbar to sync.
       </div>
-      <div style="margin:0 0 8px 0;border:1px solid #E2E8F0;border-radius:12px;background:#F8FAFC;padding:10px 14px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-          <div style="min-width:0;"><div style="font-size:13px;font-weight:700;color:#1E293B;">Sync now</div><div style="font-size:11.5px;color:#64748B;margin-top:3px;">Manually sync your Stickies with Google Drive</div></div>
-          <button class="stg-action" id="sync-now-settings-btn" type="button">Sync</button>
-        </div>
-      </div>
-      <div style="padding:0 14px 12px;font-size:12px;">
+            <div style="padding:0 14px 12px;font-size:12px;">
         <a href="./README.html" target="_blank" rel="noopener noreferrer" style="color:var(--accent);text-decoration:none;font-weight:600;">📖 Read the Stickies README</a>
       </div>
     </div>
-    <label style="display:flex; align-items:center; gap:8px; font-size:12.5px; color:#334155; cursor:pointer; margin-top:12px;">
-      <input type="checkbox" id="set-autosync" ${s.autoSync?'checked':''}> Auto-sync in the background once connected
-    </label>
 
     <div class="stg-row2" style="margin-top:22px; padding-top:14px; border-top:1px solid #F1F5F9;">
       <div class="stg-field"><label>Canvas width (px)</label><input type="number" id="set-cw" value="${s.canvasWidth}" style="width:100%;padding:9px 10px;border:1px solid #E2E8F0;border-radius:8px;font-size:13px;"></div>
@@ -3099,12 +3088,6 @@ function renderSettingsModal(){
     s.snapToGrid = e.target.checked; persistSettings(); resizeCanvas();
     document.getElementById('grid-size-field').style.display = s.snapToGrid?'block':'none';
   });
-  document.getElementById('set-autosync').addEventListener('change', (e)=>{ s.autoSync = e.target.checked; persistSettings(); });
-  const syncNowSettingsBtn = document.getElementById('sync-now-settings-btn');
-  if(syncNowSettingsBtn){
-    syncNowSettingsBtn.addEventListener('click', ()=>doSync());
-    syncNowSettingsBtn.disabled = !hasValidDriveToken();
-  }
   const syncSettingsBtn = document.getElementById('sync-settings-btn');
   if(syncSettingsBtn){
     syncSettingsBtn.addEventListener('click', ()=>{
@@ -3125,12 +3108,25 @@ function renderSettingsModal(){
   document.getElementById('set-confirmdelete').addEventListener('change', (e)=>{ s.confirmOnDelete = e.target.checked; persistSettings(); });
 }
 document.getElementById('btn-settings').addEventListener('click', ()=>{ renderSettingsModal(); openModal('modal-settings'); });
-document.getElementById('btn-reset-app').addEventListener('click', ()=>{
-  confirmDialog('Reset all app data?', 'This restores Stickies to its clean default state, including the three sample stickies, default groups and default settings. Your existing local data will be replaced. Consider exporting a backup first.', ()=>{
-    const resetNotes = sampleNotes();
+document.getElementById('btn-reset-app').addEventListener('click', async ()=>{
+  const choice = await choiceDialog('Reset all app data?',
+    'Your local stickies, groups and settings on THIS device will be replaced, and Google Drive sync will be disconnected here (the file on Drive is not changed).\n\n'+
+    '• Reset with no data: an empty app. Reconnect and Sync to restore your stickies from Drive.\n'+
+    '• Reset with sample data: the three sample stickies.\n\nConsider exporting a backup first.',
+    [{label:'Cancel',value:'cancel'},
+     {label:'Reset with no data',value:'empty'},
+     {label:'Reset with sample data',value:'samples',primary:true}]);
+  if(choice!=='empty' && choice!=='samples') return;
+  performReset(choice==='samples');
+});
+// keep = {gToken, gTokenExpiresAt, accountEmail} lets the account guard reset the data but stay connected.
+function performReset(withSamples, keep){
+  let done = false;
+  {
+    const resetNotes = withSamples ? sampleNotes() : [];
     const resetGroups = sampleGroups();
     const resetSettings = {...DEFAULT_SETTINGS};
-    const resetSync = {status:'idle', lastSyncedAt:null, fileId:null};
+    const resetSync = keep ? {status:'connected', lastSyncedAt:null, fileId:null, wasConnected:true, accountEmail:keep.accountEmail||null} : {status:'idle', lastSyncedAt:null, fileId:null};
 
     const oldStorage = {
       notes: localStorage.getItem(LS_NOTES),
@@ -3154,7 +3150,7 @@ document.getElementById('btn-reset-app').addEventListener('click', ()=>{
       const savedGroups = JSON.parse(localStorage.getItem(LS_GROUPS) || 'null');
       const savedSettings = JSON.parse(localStorage.getItem(LS_SETTINGS) || 'null');
       const savedSync = JSON.parse(localStorage.getItem(LS_SYNC) || 'null');
-      if(!Array.isArray(savedNotes) || savedNotes.length !== 3 ||
+      if(!Array.isArray(savedNotes) || savedNotes.length !== resetNotes.length ||
          !Array.isArray(savedGroups) || savedGroups.length !== 3 ||
          !savedSettings || typeof savedSettings !== 'object' ||
          !savedSync || typeof savedSync !== 'object'){
@@ -3165,8 +3161,9 @@ document.getElementById('btn-reset-app').addEventListener('click', ()=>{
       S.groups = resetGroups;
       S.settings = resetSettings;
       S.sync = resetSync;
-      S.gToken = null;
-      S.gTokenExpiresAt = 0;
+      try{ localStorage.removeItem('stickies_sync_base_v1'); }catch(e){}
+      S.gToken = keep ? keep.gToken : null;
+      S.gTokenExpiresAt = keep ? keep.gTokenExpiresAt : 0;
       S.viewMode = 'desktop';
       S.searchQuery = '';
       S.groupFilter = 'ALL';
@@ -3185,9 +3182,11 @@ document.getElementById('btn-reset-app').addEventListener('click', ()=>{
       renderBoth();
       updateTrashBadge();
       document.getElementById('btn-snap').classList.toggle('active', S.settings.snapToGrid);
-      setSyncUI('idle','Not connected');
+      setSyncUI(keep?'synced':'idle', keep?'Connected':'Not connected');
+      updateViewToggleUI();
       refreshInfoTooltip();
-      toast('Stickies reset to default data');
+      done = true;
+      toast(withSamples ? 'Stickies reset with sample data' : 'Stickies reset with no data');
     }catch(e){
       // If storage or verification fails, put the previous values back so a
       // partial reset can never destroy only some of the user's data.
@@ -3208,8 +3207,9 @@ document.getElementById('btn-reset-app').addEventListener('click', ()=>{
       console.error('Unable to complete Reset App Data:', e);
       toast('Reset failed — your existing data was kept');
     }
-  });
-});
+  }
+  return done;
+}
 
 /* ==================================================================
    ABOUT modal
@@ -3255,7 +3255,7 @@ function renderAboutModal(){
 
     <div class="about-card" style="margin-top:12px;display:block;">
       <h3 style="margin:0 0 6px;font-size:15px;color:#1E293B;">Version</h3>
-      <p style="margin:0;color:#94A3B8;font-size:12px;">Stickies · v1.0.0 · MIT licensed</p>
+      <p style="margin:0;color:#94A3B8;font-size:12px;">Stickies · v1.0.1 · MIT licensed</p>
       <button id="stkCheckUpdateBtn" class="stk-check-update-btn" type="button">
         <span aria-hidden="true">↻</span><span class="stk-check-label">Check for updates</span>
       </button>
@@ -3613,14 +3613,13 @@ document.getElementById('file-import').addEventListener('change', (e)=>{
       if(!incoming.length){ toast('No notes found in file'); return; }
       confirmDialog('Import '+incoming.length+' note(s)?', 'Notes with the same ID will be updated only if the imported version is newer.', ()=>{
         const map = new Map(S.notes.map(n=>[n.id,n]));
-        let importNextId = S.notes.reduce((m,n)=>Math.max(m, Number(n.displayId)||0), 0) + 1;
         incoming.forEach(inc=>{
           const local = map.get(inc.id);
           if(!local){
-            inc = {...inc, displayId: importNextId++};
+            delete inc.displayId;
             map.set(inc.id, inc);
           }else if(new Date(inc.updatedAt||0) > new Date(local.updatedAt||0)){
-            inc = {...inc, displayId: local.displayId || importNextId++};
+            delete inc.displayId;
             map.set(inc.id, inc);
           }
         });
@@ -3644,6 +3643,14 @@ document.getElementById('file-import').addEventListener('change', (e)=>{
    TOOLBAR wiring
    ================================================================== */
 document.getElementById('btn-new-note').addEventListener('click', ()=>createNote({}));
+document.getElementById('btn-sync').addEventListener('click', ()=>{
+  if(!hasValidDriveToken()){
+    toast(S.sync.wasConnected ? 'Reconnect Google Drive in Settings first.' : 'Connect Google Drive in Settings first.');
+    renderSettingsModal(); openModal('modal-settings');
+    return;
+  }
+  doSync();
+});
 
 const newColorGrid = document.getElementById('new-color-grid');
 COLOR_ORDER.forEach(cid=>{
@@ -3678,13 +3685,21 @@ function setupDropdown(btnId, menuId){
   btn.addEventListener('click', (e)=>{
     e.stopPropagation();
     const wasOpen = menu.classList.contains('open');
-    closeAllToolbarMenus();
-    if(!wasOpen) menu.classList.add('open');
+    // Close other menus, but keep the PARENT menu open when this menu is nested
+    // inside it (Templates / Auto Organize live inside the ⋮ menu).
+    document.querySelectorAll('.tb-menu.open').forEach(m=>{ if(m!==menu && !m.contains(menu)) m.classList.remove('open'); });
+    menu.classList.toggle('open', !wasOpen);
   });
 }
 function closeAllToolbarMenus(){ document.querySelectorAll('.tb-menu.open').forEach(m=>m.classList.remove('open')); }
 document.addEventListener('click', closeAllToolbarMenus);
 document.getElementById('menu-toolbar-more').addEventListener('click', e=>e.stopPropagation());
+document.getElementById('btn-organize').addEventListener('click', (e)=>{
+  if(S.viewMode==='grid'){
+    e.stopImmediatePropagation();
+    toast('Auto Organize works in Desktop mode. In Grid mode, stickies are arranged automatically.');
+  }
+});
 setupDropdown('btn-templates','menu-templates');
 setupDropdown('btn-organize','menu-organize');
 setupDropdown('btn-toolbar-more','menu-toolbar-more');
@@ -3697,10 +3712,24 @@ document.getElementById('menu-toolbar-more').querySelectorAll('.tb-btn').forEach
   btn.addEventListener('click', ()=>setTimeout(closeAllToolbarMenus, 0));
 });
 
+function updateViewToggleUI(){
+  const grid = S.viewMode==='grid';
+  const btn = document.getElementById('btn-toggle-view');
+  document.getElementById('view-mode-label').textContent = grid ? 'Grid' : 'Desktop';
+  btn.classList.toggle('active', grid);
+  btn.title = grid
+    ? 'Currently in Grid mode: stickies are arranged automatically in rows and columns. Click to switch to Desktop mode, where stickies stay wherever you place them.'
+    : 'Currently in Desktop mode: stickies stay wherever you place them. Click to switch to Grid mode, where stickies are arranged automatically in rows and columns.';
+  const org = document.getElementById('btn-organize');
+  if(org){
+    org.style.opacity = grid ? '.5' : '';
+    org.title = grid ? 'Auto Organize is available in Desktop mode. In Grid mode, stickies are already arranged automatically.' : 'Arrange your stickies automatically (tile, cascade, group by group or colour, compact)';
+  }
+  if(grid) closeAllToolbarMenus();
+}
 document.getElementById('btn-toggle-view').addEventListener('click', ()=>{
   S.viewMode = S.viewMode==='desktop' ? 'grid' : 'desktop';
-  document.getElementById('view-mode-label').textContent = S.viewMode==='desktop' ? 'Desktop' : 'Grid';
-  document.getElementById('btn-toggle-view').classList.toggle('active', S.viewMode==='grid');
+  updateViewToggleUI();
   renderNotes();
 });
 document.getElementById('btn-snap').addEventListener('click', ()=>{
@@ -3790,19 +3819,30 @@ function setSyncUI(status, label){
   if(dot) dot.className = 'sync-dot'+(status?(' '+status):'');
   if(topLabel && label) topLabel.textContent = label;
   if(settingsStatus){
-    settingsStatus.textContent = label || (
+    let t = label || (
       status==='synced' ? 'Connected' :
       status==='syncing' ? 'Syncing…' :
       status==='error' ? 'Reconnect needed' :
       status==='reconnect' ? 'Reconnect needed' : 'Not connected'
     );
+    const email = S.sync && S.sync.accountEmail, u = unsyncedCount();
+    if(status!=='syncing'){
+      if(email) t += ' · Last connected with: '+email;
+      if(u>0) t += ' · '+u+' unsynced change'+(u>1?'s':'');
+    }
+    settingsStatus.textContent = t;
   }
   if(settingsBtn){
     settingsBtn.textContent = S.gToken ? 'Disconnect' : 'Connect';
     settingsBtn.disabled = status==='syncing';
   }
-  const syncNowSettingsBtn = document.getElementById('sync-now-settings-btn');
-  if(syncNowSettingsBtn) syncNowSettingsBtn.disabled = !S.gToken || status==='syncing';
+  const syncBtn = document.getElementById('btn-sync');
+  if(syncBtn){
+    syncBtn.disabled = status==='syncing';
+    const l = document.getElementById('sync-btn-label');
+    if(l) l.textContent = status==='syncing' ? '⏳ Syncing…' : '☁️ Sync';
+  }
+  refreshSyncHint();
 }
 
 function loadGisScript(){
@@ -3833,14 +3873,14 @@ async function driveRequest(url, opts, token){
 
 const DRIVE_FILE_NAME = 'stickies-notes-data.json';
 
-async function findDriveFile(token){
+async function listDriveFiles(token){
   const q = encodeURIComponent(`name = '${DRIVE_FILE_NAME}' and trashed = false`);
   const res = await driveRequest(
-    `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)&spaces=drive`,
+    `https://www.googleapis.com/drive/v3/files?q=${q}&orderBy=modifiedTime%20desc&fields=files(id,name,modifiedTime)&spaces=drive`,
     {}, token
   );
   const data = await res.json();
-  return (data.files && data.files[0]) ? data.files[0].id : null;
+  return data.files || [];          // newest first
 }
 
 async function downloadDriveNotes(token, fileId){
@@ -3849,13 +3889,13 @@ async function downloadDriveNotes(token, fileId){
     {}, token
   );
   const d = await res.json();
-  return Array.isArray(d) ? d : (d.notes||[]);
+  return (Array.isArray(d) ? d : (d.notes||[])).map(({displayId, ...rest})=>rest);
 }
 
 async function uploadDriveNotes(token, notes, existingFileId){
   const boundary='-------314159265358979323846';
   const meta = { name:DRIVE_FILE_NAME, mimeType:'application/json' };
-  const body = `\r\n--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(notes,null,2)}\r\n--${boundary}--`;
+  const body = `\r\n--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(notes.map(({displayId, ...rest})=>rest),null,2)}\r\n--${boundary}--`;
   const url = existingFileId
     ? `https://www.googleapis.com/upload/drive/v3/files/${existingFileId}?uploadType=multipart`
     : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
@@ -3872,15 +3912,122 @@ async function uploadDriveNotes(token, notes, existingFileId){
   return d.id || existingFileId;
 }
 
-function mergeNotesByTime(local, remote){
-  const map = new Map(local.map(n=>[n.id,n]));
-  remote.forEach(r=>{
-    const l = map.get(r.id);
-    if(!l) map.set(r.id, r);
-    else if(new Date(r.updatedAt||0) > new Date(l.updatedAt||0)) map.set(r.id, r);
-  });
-  return Array.from(map.values());
+/* ---------- 3-way sync: pure logic (BEGIN) ---------- */
+const LS_SYNC_BASE = 'stickies_sync_base_v1';
+
+// "Base" = what this device saw the last time it was in sync with Drive.
+// Stored as { fileId, stamps:{ noteId: updatedAt } }. Only ids + timestamps.
+function stampsOf(notes){ const s={}; notes.forEach(n=>{ s[n.id]=n.updatedAt||''; }); return s; }
+function loadSyncBase(fileId){
+  try{
+    const b = JSON.parse(localStorage.getItem(LS_SYNC_BASE)||'null');
+    if(b && b.stamps && b.fileId===fileId) return b.stamps;
+  }catch(e){}
+  return null;   // null = this device never synced with this Drive file
 }
+function saveSyncBase(fileId, notes){
+  try{ localStorage.setItem(LS_SYNC_BASE, JSON.stringify({fileId, stamps:stampsOf(notes)})); }catch(e){}
+}
+
+// Untouched welcome notes on a fresh install must not count as "local data".
+const isPristineSample = n => String(n.id).startsWith('sample-') && n.updatedAt===n.createdAt;
+
+// What changed in `notes` compared to the base snapshot?
+function changesSince(notes, stamps){
+  const ids = new Set(notes.map(n=>n.id));
+  const c = {added:0, edited:0, removed:0};
+  notes.forEach(n=>{
+    if(!(n.id in stamps)) c.added++;
+    else if((n.updatedAt||'')!==stamps[n.id]) c.edited++;   // edit, move, trash, restore...
+  });
+  Object.keys(stamps).forEach(id=>{ if(!ids.has(id)) c.removed++; });  // purged
+  c.any = (c.added+c.edited+c.removed)>0;
+  return c;
+}
+
+// Decide what to do. Pure function -> easy to test.
+function planSync(local, remote, base){
+  if(remote===null) return {action:'upload'};                        // no Drive file yet
+  if(!base){                                                         // first sync on this device
+    const userLocal = local.filter(n=>!isPristineSample(n));
+    if(!userLocal.length) return remote.length ? {action:'restore', first:true} : {action:'upload'};
+    return {action:'merge', first:true, userLocal};
+  }
+  const lc = changesSince(local, base), rc = changesSince(remote, base);
+  if(!lc.any && !rc.any) return {action:'noop'};
+  if(!rc.any) return {action:'upload', lc};                          // only this device changed
+  if(!lc.any) return {action:'restore', lc, rc};                     // only Drive changed
+  return {action:'merge', lc, rc};                                   // both changed
+}
+
+// Per-note 3-way merge. base = {} on first sync (=> plain union, newest wins).
+function threeWayMerge(local, remote, base){
+  const L=new Map(local.map(n=>[n.id,n])), R=new Map(remote.map(n=>[n.id,n]));
+  const out=[]; let conflicts=0;
+  new Set([...L.keys(), ...R.keys()]).forEach(id=>{
+    const l=L.get(id), r=R.get(id), inBase = id in base, b = base[id];
+    const lChanged = l ? (!inBase || (l.updatedAt||'')!==b) : inBase;
+    const rChanged = r ? (!inBase || (r.updatedAt||'')!==b) : inBase;
+    if(l && r){
+      if(lChanged && rChanged) out.push(new Date(r.updatedAt||0) > new Date(l.updatedAt||0) ? r : l); // both edited: newest wins
+      else out.push(rChanged ? r : l);
+    }else if(l){                       // missing on Drive
+      if(!inBase) out.push(l);                    // new on this device
+      else if(lChanged){ out.push(l); conflicts++; } // deleted on Drive, edited here -> keep edit
+      /* else: deleted elsewhere, untouched here -> accept deletion */
+    }else if(r){                       // missing locally
+      if(!inBase) out.push(r);                    // new on Drive
+      else if(rChanged){ out.push(r); conflicts++; } // deleted here, edited on Drive -> keep edit
+      /* else: deleted here, untouched on Drive -> stays deleted */
+    }
+  });
+  return {notes:out, conflicts};
+}
+
+/* ---------- 3-way sync: pure logic (END) ---------- */
+
+function choiceDialog(title, message, buttons){
+  return new Promise(resolve=>{
+    const ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;';
+    const box=document.createElement('div');
+    box.style.cssText='background:#fff;border-radius:14px;max-width:440px;width:100%;padding:20px;box-shadow:0 20px 50px rgba(0,0,0,.3);';
+    const h=document.createElement('div'); h.style.cssText='font-weight:800;font-size:16px;color:#1E293B;margin-bottom:8px;'; h.textContent=title;
+    const p=document.createElement('div'); p.style.cssText='font-size:13.5px;color:#475569;line-height:1.5;white-space:pre-line;'; p.textContent=message;
+    const row=document.createElement('div'); row.style.cssText='display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:16px;';
+    buttons.forEach(b=>{
+      const el=document.createElement('button'); el.type='button'; el.textContent=b.label;
+      el.style.cssText='padding:8px 14px;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;border:1px solid #CBD5E1;'+
+        (b.primary?'background:#2563EB;color:#fff;border-color:#2563EB;':'background:#fff;color:#334155;');
+      el.onclick=()=>{ ov.remove(); resolve(b.value); };
+      row.appendChild(el);
+    });
+    box.append(h,p,row); ov.appendChild(box); document.body.appendChild(ov);
+  });
+}
+// Manual-sync helper: how many local changes are not on Drive yet?
+function unsyncedCount(){
+  try{
+    if(!S.sync || !S.sync.wasConnected) return 0;              // Drive never used on this device
+    const base = S.sync.fileId ? loadSyncBase(S.sync.fileId) : null;
+    if(!base) return S.notes.filter(n=>!isPristineSample(n)).length;   // connected but never synced
+    const c = changesSince(S.notes, base);
+    return c.added + c.edited + c.removed;
+  }catch(e){ return 0; }
+}
+function refreshSyncHint(){
+  const n = unsyncedCount();
+  const badge = document.getElementById('sync-badge');
+  if(badge){ badge.hidden = !(n>0); badge.textContent = n>99 ? '99+' : String(n); }
+  const b = document.getElementById('btn-sync');
+  if(b) b.title = n>0 ? (n+' change'+(n>1?'s':'')+' not yet synced to Google Drive. Click to sync.')
+                      : (hasValidDriveToken() ? 'Sync with Google Drive (everything is up to date)' : 'Sync with Google Drive (connect in Settings first)');
+  const acct = document.getElementById('tb-account');
+  const em = S.sync && S.sync.accountEmail;
+  if(acct){ acct.hidden = !em; acct.textContent = em ? ('Last connected with: '+em) : ''; acct.title = em || ''; }
+}
+const fmtChanges = c => `${c.added} new, ${c.edited} changed, ${c.removed} removed`;
+
 
 function clearDriveToken(markReconnect){
   S.gToken = null;
@@ -3897,6 +4044,38 @@ function hasValidDriveToken(){
   return !!S.gToken && (!S.gTokenExpiresAt || Date.now() < S.gTokenExpiresAt - 30000);
 }
 
+/* ---------- Account guard: remember WHICH Google account this device syncs with ---------- */
+async function fetchAccountEmail(token){
+  try{
+    const res = await driveRequest('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)', {}, token);
+    const d = await res.json();
+    return (d.user && d.user.emailAddress) || null;
+  }catch(e){ console.warn('Could not read Google account email', e); return null; }
+}
+// Returns true to continue connecting, false if the user cancelled.
+async function verifyAccount(token){
+  const email = await fetchAccountEmail(token);
+  const prev = S.sync.accountEmail || null;
+  if(email && prev && email.toLowerCase() !== prev.toLowerCase()){
+    const choice = await choiceDialog('Different Google account',
+      'This device was last synced with '+prev+'.\nYou are now connecting '+email+'.\n\n'+
+      '\u2022 Sync this device\'s stickies to the new account: they are merged into '+email+'\'s Drive.\n'+
+      '\u2022 Reset this device first: clears the stickies on this device so you can restore '+email+'\'s data from Drive.',
+      [{label:'Cancel',value:'cancel'},
+       {label:'Reset this device first',value:'reset'},
+       {label:'Sync this device\'s stickies to new account',value:'keep',primary:true}]);
+    if(choice==='reset'){
+      const ok = performReset(false, {gToken:token, gTokenExpiresAt:S.gTokenExpiresAt, accountEmail:email});
+      return ok;
+    }
+    if(choice!=='keep') return false;
+    S.sync.fileId = null;                                   // the new account has its own Drive file
+    try{ localStorage.removeItem(LS_SYNC_BASE); }catch(e){}   // and the old "last synced" memory no longer applies
+  }
+  if(email){ S.sync.accountEmail = email; saveSyncInfo(S.sync); }
+  return true;
+}
+
 async function connectGoogleDrive(){
   if(!navigator.onLine){ toast('You are offline'); return; }
   try{
@@ -3910,9 +4089,6 @@ async function connectGoogleDrive(){
           if(resp && resp.access_token){
             S.gToken = resp.access_token;
             S.gTokenExpiresAt = Date.now() + ((Number(resp.expires_in)||3600) * 1000);
-            S.sync.wasConnected = true;
-            S.sync.status = 'connected';
-            saveSyncInfo(S.sync);
             resolve(resp.access_token);
           }else{
             reject(new Error((resp&&resp.error_description)||'No access token'));
@@ -3923,8 +4099,18 @@ async function connectGoogleDrive(){
       client.requestAccessToken({prompt: promptType});
     });
     if(token){
+      const proceed = await verifyAccount(token);
+      if(!proceed){
+        clearDriveToken(false);
+        setSyncUI(S.sync.wasConnected?'reconnect':'idle', S.sync.wasConnected?'Reconnect needed':'Not connected');
+        toast('Connection cancelled');
+        return;
+      }
+      S.sync.wasConnected = true;
+      S.sync.status = 'connected';
+      saveSyncInfo(S.sync);
       setSyncUI('synced', 'Connected');
-      toast('Google Drive connected ✓');
+      toast('Google Drive connected \u2713');
     }
   }catch(err){
     console.error(err);
@@ -3939,39 +4125,84 @@ function disconnectGoogleDrive(){
     try{ google.accounts.oauth2.revoke(token, ()=>{}); }catch(e){}
   }
   clearDriveToken(false);
-  S.sync = { status:'idle', lastSyncedAt:S.sync.lastSyncedAt||null, fileId:S.sync.fileId||null, wasConnected:false };
+  S.sync = { ...S.sync, status:'idle', wasConnected:false };   // keeps fileId + accountEmail for the account guard
   saveSyncInfo(S.sync);
   setSyncUI('idle','Not connected');
   toast('Google Drive disconnected');
 }
 
+let driveDupWarned = false;
 async function doSync(){
   if(!navigator.onLine){ toast('You are offline'); return; }
-
-  // IMPORTANT: Sync now must NEVER invoke Google account selection.
-  // If this page has no in-memory OAuth token, the user must explicitly
-  // press Connect first.
   if(!hasValidDriveToken()){
     clearDriveToken(!!S.sync.wasConnected);
     toast(S.sync.wasConnected ? 'Reconnect Google Drive first.' : 'Connect Google Drive first.');
     return;
   }
-
   const token = S.gToken;
   try{
-    setSyncUI('syncing','Syncing…');
-    let fileId = S.sync.fileId || await findDriveFile(token);
-    let remote = fileId ? await downloadDriveNotes(token, fileId) : [];
-    const merged = mergeNotesByTime(S.notes, remote);
-    S.notes = merged;
-    persistNotes();
-    renderNotes();
-    renderGroups();
-    fileId = await uploadDriveNotes(token, merged, fileId);
-    S.sync = { status:'synced', lastSyncedAt:nowIso(), fileId, wasConnected:true };
+    setSyncUI('syncing','Syncing\u2026');
+    const files = await listDriveFiles(token);
+    // Use the file this device remembers if it still exists; otherwise the newest one (or none yet).
+    let fileId = (S.sync.fileId && files.some(f=>f.id===S.sync.fileId)) ? S.sync.fileId : (files.length ? files[0].id : null);
+    if(files.length>1 && !driveDupWarned){
+      const list = files.map(f=>'\u2022 modified '+new Date(f.modifiedTime).toLocaleString()+(f.id===fileId?'  \u2190 will be used':'')).join('\n');
+      const c = await choiceDialog('Multiple Stickies files on Google Drive',
+        'Google Drive has '+files.length+' files named "'+DRIVE_FILE_NAME+'":\n'+list+'\n\nSync will use the one marked above. Open Google Drive and delete the extra file(s) to avoid confusion.',
+        [{label:'Cancel sync',value:'cancel'},{label:'Continue',value:'go',primary:true}]);
+      if(c!=='go'){ setSyncUI('synced','Connected'); return; }
+      driveDupWarned = true;
+    }
+    const remote = fileId ? await downloadDriveNotes(token, fileId) : null;
+    const base = fileId ? loadSyncBase(fileId) : null;
+    const plan = planSync(S.notes, remote, base);
+
+    let finalNotes = S.notes, upload = false;
+
+    if(plan.action==='upload'){
+      upload = true;
+
+    }else if(plan.action==='restore'){
+      const choice = plan.first
+        ? await choiceDialog('Restore from Google Drive?',
+            'Google Drive contains Stickies that are not on this device. Restore them?',
+            [{label:'Cancel',value:'cancel'},{label:'Restore from Drive',value:'restore',primary:true}])
+        : await choiceDialog('Newer data on Google Drive',
+            'Google Drive has newer Stickies than the local data ('+fmtChanges(plan.rc)+').\nRestore the newer Drive data to this device?',
+            [{label:'Keep Local',value:'cancel'},{label:'Restore',value:'restore',primary:true}]);
+      if(choice!=='restore'){
+        setSyncUI('synced','Connected'); toast('Sync skipped'); return;
+      }
+      finalNotes = remote;
+
+    }else if(plan.action==='merge'){
+      const msg = plan.first
+        ? 'This device and Google Drive both have Stickies. Merge them?'
+        : 'Both this device ('+fmtChanges(plan.lc)+') and Google Drive ('+fmtChanges(plan.rc)+') changed since the last sync.\n'+
+          'Merge combines both: new stickies are kept, deletions are applied, and the most recent edit wins.';
+      const choice = await choiceDialog('Merge with Google Drive?', msg, [
+        {label:'Cancel',value:'cancel'},
+        {label:'Overwrite Drive',value:'local'},
+        {label:'Merge',value:'merge',primary:true}]);
+      if(choice==='cancel' || !choice){ setSyncUI('synced','Connected'); toast('Sync skipped'); return; }
+      if(choice==='merge'){
+        const m = threeWayMerge(plan.first ? plan.userLocal : S.notes, remote, base||{});
+        finalNotes = m.notes;
+      }
+      upload = true;
+    }
+
+    if(finalNotes!==S.notes){
+      S.notes = finalNotes;
+      persistNotes(); renderNotes(); renderGroups();
+    }
+    if(upload) fileId = await uploadDriveNotes(token, S.notes, fileId);
+    saveSyncBase(fileId, S.notes);
+
+    S.sync = { ...S.sync, status:'synced', lastSyncedAt:nowIso(), fileId, wasConnected:true };
     saveSyncInfo(S.sync);
-    setSyncUI('synced', 'Synced '+new Date().toLocaleTimeString());
-    toast('Synced with Google Drive ✓');
+    setSyncUI('synced','Synced '+new Date().toLocaleTimeString());
+    toast('Synced with Google Drive \u2713');
   }catch(err){
     console.error(err);
     if(err && err.status===401){
@@ -3979,9 +4210,7 @@ async function doSync(){
       toast('Google Drive session expired. Tap Connect to resume.');
       return;
     }
-    S.sync.status='error';
-    S.sync.wasConnected=true;
-    saveSyncInfo(S.sync);
+    S.sync.status='error'; S.sync.wasConnected=true; saveSyncInfo(S.sync);
     setSyncUI('error','Sync failed');
     toast('Sync failed: '+err.message);
   }
@@ -4112,7 +4341,7 @@ updateOfflineIndicator();
       })
       .catch(error=>{
         console.warn('Stickies service worker registration failed:',error);
-        if(checkStatus) setCheckStatus('Update service unavailable.');
+        if(typeof setCheckStatus==='function') setCheckStatus('Update service unavailable.');
       });
   });
 
@@ -4147,6 +4376,8 @@ function init(){
   renderNotes();
   updateTrashBadge();
   document.getElementById('btn-snap').classList.toggle('active', S.settings.snapToGrid);
+  refreshSyncHint();
+  updateViewToggleUI();
   window.addEventListener('resize', resizeCanvas);
 }
 init();
