@@ -272,6 +272,8 @@ input,select,textarea{font-family:inherit;}
   font-size:13.5px; line-height:1.45;
 }
 .note.rolled-up .note-body, .note.rolled-up .note-toolbar, .note.rolled-up .note-tags{display:none;}
+/* Editing sets inline display:block on the view/editor; !important keeps a minimized sticky collapsed. */
+.note.rolled-up .note-body-wrap{display:none !important;}
 .note.rolled-up{height:auto !important; min-height:0;}
 .note mark.hl{background:#FDE047; color:#1E293B; border-radius:2px; padding:0 1px;}
 .note .chk{cursor:pointer;}
@@ -1796,6 +1798,8 @@ function buildNoteEl(note){
   });
   el.querySelector('[data-act="rollup"]').addEventListener('click', (e)=>{
     if(note.isLocked){ e.preventDefault(); e.stopPropagation(); return; }
+    const ae = document.activeElement;
+    if(ae && ae!==e.currentTarget && el.contains(ae) && ae.blur) ae.blur();   // finish any edit first
     note.isRolledUp = !note.isRolledUp; note.updatedAt=nowIso(); persistNotes();
     el.classList.toggle('rolled-up', note.isRolledUp);
     const rb = e.currentTarget;
