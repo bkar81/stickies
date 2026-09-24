@@ -91,8 +91,19 @@ input,select,textarea{font-family:inherit;}
 .tb-menu-item:hover{background:#F1F5F9;}
 .tb-menu-item.danger{color:#DC2626;}
 .tb-menu-divider{height:1px; background:#E2E8F0; margin:4px 2px;}
-.tb-account{font-size:11.5px;color:#64748B;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:0 4px;align-self:center;}
-@media (max-width:900px){.tb-account{display:none !important;}}
+.sync-chip{display:inline-flex;align-items:center;gap:8px;padding:4px 12px 4px 8px;border-radius:12px;background:#F1F5F9;border:1px solid #E2E8F0;cursor:pointer;font:inherit;text-align:left;max-width:270px;min-width:0;--c:#16A34A;align-self:center;}
+.sync-chip:hover{background:#E8EEF5;}
+.sync-chip[hidden]{display:none;}
+.sync-chip[data-state="expired"]{--c:#D97706;background:#FFFBEB;border-color:#FDE68A;}
+.sync-chip .sc-ic{display:flex;color:var(--c);flex:0 0 auto;}
+.sync-chip .sc-ic svg{width:24px;height:24px;}
+.sync-chip .sc-text{display:flex;flex-direction:column;min-width:0;line-height:1.2;}
+.sync-chip .sc-label{font-size:10.5px;font-weight:600;color:#64748B;white-space:nowrap;}
+.sync-chip .sc-email{font-size:12.5px;font-weight:800;color:#E4572E;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+@media (max-width:560px){.sync-chip{display:none !important;}}
+#btn-sync .ic{width:18px;height:18px;color:#F59E0B;vertical-align:-4px;margin-right:2px;}
+@keyframes stkpulse{50%{opacity:.35;}}
+.ic.pulse{animation:stkpulse 1s ease-in-out infinite;}
 .sync-dot{width:8px;height:8px;border-radius:50%;background:#94A3B8;flex:0 0 auto;}
 .count-badge{
   position:absolute; top:-6px; right:-6px; background:#DC2626; color:#fff; font-size:10px; font-weight:700;
@@ -562,8 +573,11 @@ input,select,textarea{font-family:inherit;}
         </div>
       </div>
 
-      <button class="tb-btn" id="btn-sync" style="position:relative;" title="Sync with Google Drive"><span id="sync-btn-label">☁️ Sync</span><span id="sync-badge" class="count-badge" hidden>0</span></button>
-      <span id="tb-account" class="tb-account" hidden></span>
+      <button class="tb-btn" id="btn-sync" style="position:relative;" title="Sync with Google Drive"><span id="sync-btn-label"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4.5 4.5 0 0 1-.7-8.95A6 6 0 0 1 17.9 9.5 4.25 4.25 0 0 1 17.5 18Z"/></svg> Sync</span><span id="sync-badge" class="count-badge" hidden>0</span></button>
+      <button type="button" class="sync-chip" id="tb-account" data-state="ok" hidden>
+        <span class="sc-ic"><svg class="" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18a4.5 4.5 0 0 1-.7-8.95A6 6 0 0 1 17.9 9.5 4.25 4.25 0 0 1 17.5 18Z"/><path d="M9.3 13.4l2.1 2.1 3.9-4.2"/></svg></span>
+        <span class="sc-text"><span class="sc-label" id="sc-label">Last synced with</span><span class="sc-email" id="sc-email"></span></span>
+      </button>
 
       <div class="tb-dropdown" style="margin-left:auto;">
         <button class="tb-btn icon-only" id="btn-toolbar-more" title="More toolbar actions" aria-label="More toolbar actions">⋮</button>
@@ -792,6 +806,8 @@ input,select,textarea{font-family:inherit;}
 const STICKIES_APP_VERSION = "1.0.1";
 // Inline SVG icons (no dependence on device fonts). They inherit the button's text colour.
 const ICON = {
+ "cloud": "<svg class=\"ic\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" focusable=\"false\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M7 18a4.5 4.5 0 0 1-.7-8.95A6 6 0 0 1 17.9 9.5 4.25 4.25 0 0 1 17.5 18Z\"/></svg>",
+ "cloudOk": "<svg class=\"\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" focusable=\"false\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M7 18a4.5 4.5 0 0 1-.7-8.95A6 6 0 0 1 17.9 9.5 4.25 4.25 0 0 1 17.5 18Z\"/><path d=\"M9.3 13.4l2.1 2.1 3.9-4.2\"/></svg>",
  "lock": "<svg class=\"ic\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M7.5 10.5V7.5a4.5 4.5 0 0 1 9 0v3\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\"/><path fill=\"currentColor\" fill-rule=\"evenodd\" d=\"M6.5 10h11a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2V12a2 2 0 0 1 2-2zM12 13a1.7 1.7 0 0 0-.85 3.17V18.5h1.7v-2.33A1.7 1.7 0 0 0 12 13z\"/></svg>",
  "unlock": "<svg class=\"ic\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M7.5 10.5V7.5a4.5 4.5 0 0 1 8.6-1.8\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" stroke-linecap=\"round\"/><path fill=\"currentColor\" fill-rule=\"evenodd\" d=\"M6.5 10h11a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2V12a2 2 0 0 1 2-2zM12 13a1.7 1.7 0 0 0-.85 3.17V18.5h1.7v-2.33A1.7 1.7 0 0 0 12 13z\"/></svg>",
  "up": "<svg class=\"ic\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M12 4 L20 20 L12 16 L4 20 Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.4\" stroke-linejoin=\"round\"/></svg>",
@@ -3657,11 +3673,15 @@ document.getElementById('file-import').addEventListener('change', (e)=>{
    TOOLBAR wiring
    ================================================================== */
 document.getElementById('btn-new-note').addEventListener('click', ()=>createNote({}));
-document.getElementById('btn-sync').addEventListener('click', ()=>{
+document.getElementById('tb-account').addEventListener('click', ()=>{ renderSettingsModal(); openModal('modal-settings'); });
+document.getElementById('btn-sync').addEventListener('click', async ()=>{
   if(!hasValidDriveToken()){
-    toast(S.sync.wasConnected ? 'Reconnect Google Drive in Settings first.' : 'Connect Google Drive in Settings first.');
-    renderSettingsModal(); openModal('modal-settings');
-    return;
+    if(!S.sync.wasConnected){
+      toast('Connect Google Drive in Settings first.');
+      renderSettingsModal(); openModal('modal-settings');
+      return;
+    }
+    if(!(await reconnectDrive())) return;      // token expired: renew quietly, then continue
   }
   doSync();
 });
@@ -3854,7 +3874,7 @@ function setSyncUI(status, label){
   if(syncBtn){
     syncBtn.disabled = status==='syncing';
     const l = document.getElementById('sync-btn-label');
-    if(l) l.textContent = status==='syncing' ? '⏳ Syncing…' : '☁️ Sync';
+    if(l) l.innerHTML = status==='syncing' ? ICON.cloud.replace('class="ic"','class="ic pulse"')+' Syncing…' : ICON.cloud+' Sync';
   }
   refreshSyncHint();
 }
@@ -4035,10 +4055,23 @@ function refreshSyncHint(){
   if(badge){ badge.hidden = !(n>0); badge.textContent = n>99 ? '99+' : String(n); }
   const b = document.getElementById('btn-sync');
   if(b) b.title = n>0 ? (n+' change'+(n>1?'s':'')+' not yet synced to Google Drive. Click to sync.')
-                      : (hasValidDriveToken() ? 'Sync with Google Drive (everything is up to date)' : 'Sync with Google Drive (connect in Settings first)');
-  const acct = document.getElementById('tb-account');
+                      : (hasValidDriveToken() ? 'Sync with Google Drive (everything is up to date)'
+                         : (S.sync && S.sync.wasConnected ? 'Sync with Google Drive (renews the connection automatically)' : 'Sync with Google Drive (connect in Settings first)'));
+  const chip = document.getElementById('tb-account');
   const em = S.sync && S.sync.accountEmail;
-  if(acct){ acct.hidden = !em; acct.textContent = em ? ('Last connected with: '+em) : ''; acct.title = em || ''; }
+  if(chip){
+    chip.hidden = !em;
+    if(em){
+      const expired = !hasValidDriveToken();
+      const last = S.sync.lastSyncedAt ? new Date(S.sync.lastSyncedAt) : null;
+      const t = last ? last.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}) : '';
+      chip.dataset.state = expired ? 'expired' : 'ok';
+      document.getElementById('sc-label').textContent = expired ? 'Session expired · tap Sync' : (last ? 'Last synced with · '+t : 'Connected as');
+      document.getElementById('sc-email').textContent = em;
+      chip.title = (last ? 'Last synced with '+em+' on '+last.toLocaleString() : 'Connected as '+em) +
+                   (expired ? '\nSession expired - click Sync to reconnect automatically.' : '') + '\nClick for Google Drive settings.';
+    }
+  }
 }
 const fmtChanges = c => `${c.added} new, ${c.edited} changed, ${c.removed} removed`;
 
@@ -4090,28 +4123,53 @@ async function verifyAccount(token){
   return true;
 }
 
+// Ask Google for an access token. prompt '' = no consent screen (fast renewal when already authorised);
+// hint = the account this device last used, so Google doesn't show an account chooser.
+function requestDriveToken(promptType, hint){
+  return new Promise((resolve,reject)=>{
+    const cfg = {
+      client_id: STICKIES_GOOGLE_CLIENT_ID,
+      scope: 'https://www.googleapis.com/auth/drive.file',
+      callback: (resp)=>{
+        if(resp && resp.access_token){
+          S.gToken = resp.access_token;
+          S.gTokenExpiresAt = Date.now() + ((Number(resp.expires_in)||3600) * 1000);
+          resolve(resp.access_token);
+        }else{
+          reject(new Error((resp&&resp.error_description)||(resp&&resp.error)||'No access token'));
+        }
+      },
+      error_callback: (err)=>reject(new Error(err && (err.type||err.message) || 'Sign-in cancelled'))
+    };
+    if(hint) cfg.hint = hint;
+    google.accounts.oauth2.initTokenClient(cfg).requestAccessToken({prompt: promptType});
+  });
+}
+
+// Renew an expired connection without the consent screen. Call it straight from a click (popup rules).
+async function reconnectDrive(){
+  if(!navigator.onLine){ toast('You are offline'); return false; }
+  try{
+    setSyncUI('syncing','Reconnecting\u2026');
+    await loadGisScript();
+    const token = await requestDriveToken('', S.sync.accountEmail);
+    const proceed = await verifyAccount(token);
+    if(!proceed){ clearDriveToken(true); toast('Connection cancelled'); return false; }
+    S.sync.status = 'connected'; S.sync.wasConnected = true; saveSyncInfo(S.sync);
+    return true;
+  }catch(err){
+    console.warn('Reconnect failed', err);
+    clearDriveToken(true);
+    toast('Could not renew the Google connection. Try Settings \u2192 Connect.');
+    return false;
+  }
+}
+
 async function connectGoogleDrive(){
   if(!navigator.onLine){ toast('You are offline'); return; }
   try{
     await loadGisScript();
-    const promptType = S.sync.wasConnected ? '' : 'consent';
-    const token = await new Promise((resolve,reject)=>{
-      const client = google.accounts.oauth2.initTokenClient({
-        client_id: STICKIES_GOOGLE_CLIENT_ID,
-        scope: 'https://www.googleapis.com/auth/drive.file',
-        callback: (resp)=>{
-          if(resp && resp.access_token){
-            S.gToken = resp.access_token;
-            S.gTokenExpiresAt = Date.now() + ((Number(resp.expires_in)||3600) * 1000);
-            resolve(resp.access_token);
-          }else{
-            reject(new Error((resp&&resp.error_description)||'No access token'));
-          }
-        },
-        error_callback: (err)=>reject(new Error(err && (err.type||err.message) || 'Sign-in cancelled'))
-      });
-      client.requestAccessToken({prompt: promptType});
-    });
+    const token = await requestDriveToken(S.sync.wasConnected ? '' : 'consent', S.sync.accountEmail);
     if(token){
       const proceed = await verifyAccount(token);
       if(!proceed){
@@ -4156,6 +4214,7 @@ async function doSync(){
   const token = S.gToken;
   try{
     setSyncUI('syncing','Syncing\u2026');
+    if(!S.sync.accountEmail){ const em = await fetchAccountEmail(token); if(em){ S.sync.accountEmail = em; saveSyncInfo(S.sync); } }
     const files = await listDriveFiles(token);
     // Use the file this device remembers if it still exists; otherwise the newest one (or none yet).
     let fileId = (S.sync.fileId && files.some(f=>f.id===S.sync.fileId)) ? S.sync.fileId : (files.length ? files[0].id : null);
@@ -4392,6 +4451,8 @@ function init(){
   document.getElementById('btn-snap').classList.toggle('active', S.settings.snapToGrid);
   refreshSyncHint();
   updateViewToggleUI();
+  if(S.sync.wasConnected && navigator.onLine){ loadGisScript().catch(()=>{}); }
+  setInterval(refreshSyncHint, 60000);
   window.addEventListener('resize', resizeCanvas);
 }
 init();
