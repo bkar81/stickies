@@ -1,8 +1,8 @@
 // Stickies Service Worker
-// Version: v1.0.0
+// Version: v1.0.1
 // Handles offline caching and detects new Stickies HTML versions.
 
-const CACHE_NAME = "stickies-cache-v1.0.0";
+const CACHE_NAME = "stickies-cache-v1.0.1";
 
 const ASSETS = [
   "./",
