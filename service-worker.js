@@ -1,8 +1,11 @@
 // Stickies Service Worker
-// Version: v1.0.1
+// Version: v1.0.2
 // Handles offline caching and detects new Stickies HTML versions.
 
-const CACHE_NAME = "stickies-cache-v1.0.1";
+// All apps share one GitHub Pages origin (and one Cache Storage),
+// so every cache this app owns starts with this prefix.
+const CACHE_PREFIX = "stickies-cache-";
+const CACHE_NAME = CACHE_PREFIX + "v1.0.2";
 
 const ASSETS = [
   "./",
@@ -32,7 +35,9 @@ self.addEventListener("activate", (event) => {
     caches.keys()
       .then((cacheNames) => Promise.all(
         cacheNames
-          .filter((cacheName) => cacheName !== CACHE_NAME)
+          // Only delete OLD caches that belong to Stickies.
+          // Never touch caches of the other apps on this origin.
+          .filter((cacheName) => cacheName.startsWith(CACHE_PREFIX) && cacheName !== CACHE_NAME)
           .map((cacheName) => caches.delete(cacheName))
       ))
       .then(() => self.clients.claim())
@@ -48,6 +53,37 @@ self.addEventListener("message", (event) => {
     self.skipWaiting();
   }
 });
+
+// ============================================================
+// HELPERS
+// ============================================================
+
+// Look up a request ONLY in Stickies' own cache.
+// (caches.match() would search every cache on the shared origin.)
+function ownCacheMatch(request) {
+  return caches.open(CACHE_NAME)
+    .then((cache) => cache.match(request, { ignoreSearch: true }));
+}
+
+// Always resolve with a real Response (never undefined), so the
+// page can never go blank when the network fails.
+function offlineFallback(cachedResponse, isShell) {
+  if (cachedResponse) {
+    return cachedResponse;
+  }
+
+  const failure = () => new Response(
+    "Offline and nothing cached yet. Please reload.",
+    { status: 503, headers: { "Content-Type": "text/plain" } }
+  );
+
+  if (!isShell) {
+    return failure();
+  }
+
+  return ownCacheMatch("./index.html")
+    .then((shell) => shell || failure());
+}
 
 // ============================================================
 // FETCH
@@ -70,7 +106,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   event.respondWith(
-    caches.match(event.request)
+    ownCacheMatch(event.request)
       .then((cachedResponse) => {
 
         // ----------------------------------------------------
@@ -105,7 +141,7 @@ self.addEventListener("fetch", (event) => {
 
               return networkResponse;
             })
-            .catch(() => cachedResponse);
+            .catch(() => offlineFallback(cachedResponse, true));
         }
 
         // ----------------------------------------------------
@@ -131,7 +167,8 @@ self.addEventListener("fetch", (event) => {
             }
 
             return networkResponse;
-          });
+          })
+          .catch(() => offlineFallback(null, false));
       })
   );
 });
